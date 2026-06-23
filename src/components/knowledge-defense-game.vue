@@ -161,6 +161,12 @@
                 <strong>{{ resultAbilitySummary }}</strong>
                 <small>{{ resultAbilityDetail }}</small>
               </div>
+              <div class="result-badges" aria-label="本局獲得徽章">
+                <span v-for="badge in unlockedRunBadges" :key="badge.id" :style="{ borderColor: badge.color }">
+                  {{ badge.label }}
+                </span>
+                <small v-if="unlockedRunBadges.length === 0">本局尚未解鎖徽章，下一局先拿暖身守護。</small>
+              </div>
               <button class="primary-action compact" type="button" @click="resetGame(state.grade)">再玩一次</button>
             </div>
           </div>
@@ -262,6 +268,25 @@
               <strong>{{ totalAnswered === 0 ? '正確率 -' : `正確率 ${liveAccuracy}%` }}</strong>
             </div>
             <small>本次條件題庫已看過 {{ seenQuestionCount }} / {{ currentQuestionCount }} 題</small>
+          </div>
+          <div class="badge-card" aria-label="本局徽章">
+            <div class="badge-heading">
+              <span>本局徽章</span>
+              <strong>{{ badgeSummaryText }}</strong>
+            </div>
+            <div class="badge-grid">
+              <span
+                v-for="badge in runBadges"
+                :key="badge.id"
+                class="badge-token"
+                :class="{ unlocked: badge.unlocked }"
+                :style="{ borderColor: badge.unlocked ? badge.color : '#e2e8f0' }"
+              >
+                <strong>{{ badge.label }}</strong>
+                <em>{{ badge.unlocked ? '達成' : badge.progress }}</em>
+                <small>{{ badge.detail }}</small>
+              </span>
+            </div>
           </div>
           <div v-if="retryMission && state.status !== 'ready'" class="retry-mission" :class="{ done: retryMission.done }" aria-label="再挑戰任務進度">
             <div class="retry-mission-heading">
@@ -401,6 +426,16 @@ interface RunSummary {
   abilityFocusId?: AbilityId;
   abilityFocus?: string;
   abilityPractice?: number;
+  badges?: string[];
+}
+
+interface RunBadge {
+  id: string;
+  label: string;
+  detail: string;
+  progress: string;
+  color: string;
+  unlocked: boolean;
 }
 
 const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
@@ -476,6 +511,7 @@ const runCorrectPercent = computed(() => Math.min(100, Math.round((totalCorrect.
 const remainingCorrect = computed(() => Math.max(0, runCorrectGoal.value - totalCorrect.value));
 const liveAccuracy = computed(() => (totalAnswered.value === 0 ? 0 : Math.round((totalCorrect.value / totalAnswered.value) * 100)));
 const seenQuestionCount = computed(() => Math.min(totalAnswered.value, currentQuestionCount.value));
+const reviewBadgeGoal = computed(() => Math.max(1, Math.ceil(reviewGoal.value / 2)));
 const weaknessEntry = computed(() => {
   const ranked = subjectEntries.value
     .filter((subject) => subject.mistakes > 0)
@@ -591,6 +627,45 @@ const retryMissionFocusText = computed(() => {
   if (retryMissionDeckFocusCount.value === 0) return '目前條件沒有相符能力題，任務會保留到合適題庫。';
   return `前段優先 ${retryMissionDeckFocusCount.value} 題。`;
 });
+const runBadges = computed<RunBadge[]>(() => [
+  {
+    id: 'warmup',
+    label: '暖身守護',
+    detail: '答對 5 題',
+    progress: `${Math.min(totalCorrect.value, 5)}/5`,
+    color: '#f59e0b',
+    unlocked: totalCorrect.value >= 5,
+  },
+  {
+    id: 'steady',
+    label: '穩定防線',
+    detail: `答對 ${runCorrectGoal.value} 題`,
+    progress: `${Math.min(totalCorrect.value, runCorrectGoal.value)}/${runCorrectGoal.value}`,
+    color: '#0f766e',
+    unlocked: totalCorrect.value >= runCorrectGoal.value,
+  },
+  {
+    id: 'repair',
+    label: '錯題修復師',
+    detail: `修復 ${reviewBadgeGoal.value} 題`,
+    progress: `${Math.min(totalReviewed.value, reviewBadgeGoal.value)}/${reviewBadgeGoal.value}`,
+    color: '#4f46e5',
+    unlocked: totalReviewed.value >= reviewBadgeGoal.value,
+  },
+  {
+    id: 'retry',
+    label: '專注補強',
+    detail: retryMission.value ? `完成 ${retryMission.value.label}` : '完成再挑戰任務',
+    progress: retryMission.value ? `${retryMission.value.progress}/${retryMission.value.practice}` : '等待任務',
+    color: retryMission.value?.color ?? '#2563eb',
+    unlocked: retryMission.value?.done ?? false,
+  },
+]);
+const unlockedRunBadges = computed(() => runBadges.value.filter((badge) => badge.unlocked));
+const badgeSummaryText = computed(() => {
+  if (unlockedRunBadges.value.length === 0) return '先拿暖身守護';
+  return `已解鎖 ${unlockedRunBadges.value.length} 枚`;
+});
 const missionEntries = computed(() => {
   const missions = [
     { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
@@ -612,7 +687,8 @@ const latestRunSummary = computed(() => {
   const result = latest.status === 'won' ? '成功' : '再挑戰';
   const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
   const abilityText = latest.abilityFocus ? ` / 補 ${latest.abilityFocus}` : '';
-  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}`;
+  const badgeText = latest.badges?.length ? ` / 徽章 ${latest.badges.length}` : '';
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${badgeText}`;
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
@@ -832,6 +908,7 @@ function saveCompletedRunIfNeeded(): void {
     abilityFocusId: resultAbilityEntry.value?.id,
     abilityFocus: resultAbilityEntry.value?.label,
     abilityPractice: resultAbilityPractice.value,
+    badges: unlockedRunBadges.value.map((badge) => badge.label),
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
   try {
@@ -1480,6 +1557,30 @@ function loadRunHistory(): RunSummary[] {
   font-weight: 850;
 }
 
+.result-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  max-width: 360px;
+}
+
+.result-badges span,
+.result-badges small {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.result-badges small {
+  border-radius: 8px;
+  line-height: 1.35;
+}
+
 .control-panel {
   display: grid;
   grid-template-rows: auto auto 1fr;
@@ -1794,6 +1895,88 @@ function loadRunHistory(): RunSummary[] {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #2563eb, #0f766e);
+}
+
+.badge-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.badge-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.badge-heading span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.badge-heading strong {
+  color: #0f766e;
+  font-size: 0.82rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.badge-token {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.badge-token.unlocked {
+  background: #ecfdf5;
+  color: #0f172a;
+}
+
+.badge-token strong,
+.badge-token em,
+.badge-token small {
+  min-width: 0;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.badge-token strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-token em {
+  color: #0f766e;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.badge-token small {
+  grid-column: 1 / 3;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.25;
 }
 
 .weakness-card,
