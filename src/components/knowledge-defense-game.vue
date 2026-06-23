@@ -88,6 +88,20 @@
         <strong>{{ parentWeeklyReport.summary }}</strong>
         <small>{{ parentWeeklyReport.nextStep }}</small>
       </div>
+      <div v-if="runHistory.length > 0" class="weekly-coach-card setup-weekly-coach" aria-label="家長週報卡">
+        <div class="weekly-coach-heading">
+          <span>週報卡</span>
+          <strong>{{ weeklyCoachCard.status }}</strong>
+        </div>
+        <div class="weekly-coach-metrics">
+          <span v-for="metric in weeklyCoachCard.metrics" :key="metric.label">
+            <strong>{{ metric.value }}</strong>
+            <em>{{ metric.label }}</em>
+            <small>{{ metric.detail }}</small>
+          </span>
+        </div>
+        <small>{{ weeklyCoachCard.action }}</small>
+      </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
     </section>
@@ -399,6 +413,20 @@
             <strong>迷思清單</strong>
             <span>{{ misconceptionFocusText }}</span>
           </div>
+          <div class="weekly-coach-card" aria-label="家長週報卡">
+            <div class="weekly-coach-heading">
+              <span>家長週報卡</span>
+              <strong>{{ weeklyCoachCard.status }}</strong>
+            </div>
+            <div class="weekly-coach-metrics">
+              <span v-for="metric in weeklyCoachCard.metrics" :key="metric.label">
+                <strong>{{ metric.value }}</strong>
+                <em>{{ metric.label }}</em>
+                <small>{{ metric.detail }}</small>
+              </span>
+            </div>
+            <small>{{ weeklyCoachCard.action }}</small>
+          </div>
           <div class="history-note">
             <strong>最近戰績</strong>
             <span v-if="runHistory.length === 0">完成一局後會在這裡留下本機紀錄。</span>
@@ -493,6 +521,18 @@ interface MisconceptionEntry {
   prompt: string;
   correctAnswer: string;
   count: number;
+}
+
+interface WeeklyReportMetric {
+  label: string;
+  value: string;
+  detail: string;
+}
+
+interface WeeklyCoachCard {
+  status: string;
+  metrics: WeeklyReportMetric[];
+  action: string;
 }
 
 type GraphicsMode = 'auto' | 'performance' | 'quality';
@@ -777,6 +817,13 @@ const badgeSummaryText = computed(() => {
   if (unlockedRunBadges.value.length === 0) return '先拿暖身守護';
   return `已解鎖 ${unlockedRunBadges.value.length} 枚`;
 });
+const weeklyRuns = computed(() => {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return runHistory.value.filter((run) => {
+    const time = new Date(run.date).getTime();
+    return Number.isFinite(time) && time >= weekAgo;
+  });
+});
 const misconceptionFocusList = computed(() => {
   const counts = new Map<string, number>();
   for (const entry of highConfidenceMistakes.value) {
@@ -798,26 +845,22 @@ const misconceptionFocusText = computed(() => {
   return misconceptionFocusList.value.join(' / ');
 });
 const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const weeklyRuns = runHistory.value.filter((run) => {
-    const time = new Date(run.date).getTime();
-    return Number.isFinite(time) && time >= weekAgo;
-  });
-  if (weeklyRuns.length === 0) {
+  const runs = weeklyRuns.value;
+  if (runs.length === 0) {
     return {
       summary: '最近 7 日尚未完成戰績。',
       nextStep: '先完成一局，系統會整理正確率、錯題修復與補強方向。',
     };
   }
 
-  const answered = weeklyRuns.reduce((sum, run) => sum + run.answered, 0);
-  const correct = weeklyRuns.reduce((sum, run) => sum + run.correct, 0);
-  const reviewed = weeklyRuns.reduce((sum, run) => sum + run.reviewed, 0);
-  const badgeCount = weeklyRuns.reduce((sum, run) => sum + (run.badges?.length ?? 0), 0);
-  const wins = weeklyRuns.filter((run) => run.status === 'won').length;
+  const answered = runs.reduce((sum, run) => sum + run.answered, 0);
+  const correct = runs.reduce((sum, run) => sum + run.correct, 0);
+  const reviewed = runs.reduce((sum, run) => sum + run.reviewed, 0);
+  const badgeCount = runs.reduce((sum, run) => sum + (run.badges?.length ?? 0), 0);
+  const wins = runs.filter((run) => run.status === 'won').length;
   const accuracyText = answered === 0 ? '-' : `${Math.round((correct / answered) * 100)}%`;
   const focusCounts = new Map<string, number>();
-  for (const run of weeklyRuns) {
+  for (const run of runs) {
     if (!run.abilityFocus) continue;
     focusCounts.set(run.abilityFocus, (focusCounts.get(run.abilityFocus) ?? 0) + 1);
   }
@@ -828,8 +871,57 @@ const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
   const misconceptionStep = misconceptionFocusList.value.length > 0 ? `迷思先修：${misconceptionFocusList.value[0]}。` : '';
 
   return {
-    summary: `最近 7 日 ${weeklyRuns.length} 局 / 勝 ${wins} / 正確率 ${accuracyText} / 修復 ${reviewed} 題 / 徽章 ${badgeCount}`,
+    summary: `最近 7 日 ${runs.length} 局 / 勝 ${wins} / 正確率 ${accuracyText} / 修復 ${reviewed} 題 / 徽章 ${badgeCount}`,
     nextStep: `${misconceptionStep}${nextStep}`,
+  };
+});
+const weeklyCoachCard = computed<WeeklyCoachCard>(() => {
+  const runs = weeklyRuns.value;
+  const weeklyAnswered = runs.reduce((sum, run) => sum + run.answered, 0);
+  const weeklyCorrect = runs.reduce((sum, run) => sum + run.correct, 0);
+  const weeklyReviewed = runs.reduce((sum, run) => sum + run.reviewed, 0);
+  const liveAnswered = totalAnswered.value;
+  const liveCorrect = totalCorrect.value;
+  const liveReviewed = totalReviewed.value;
+  const answered = weeklyAnswered + liveAnswered;
+  const correct = weeklyCorrect + liveCorrect;
+  const reviewed = weeklyReviewed + liveReviewed;
+  const accuracyText = answered === 0 ? '-' : `${Math.round((correct / answered) * 100)}%`;
+  const misconceptionCount = misconceptionFocusList.value.length;
+  const focusLabel = misconceptionFocusList.value[0] ?? retryMission.value?.label ?? resultAbilityEntry.value?.label ?? '五科輪替';
+  const practiceCount = misconceptionCount > 0 ? 6 + misconceptionCount * 2 : retryMission.value?.practice ?? Math.max(3, Math.ceil(runCorrectGoal.value / 6));
+  const status =
+    answered === 0
+      ? '等待第一局'
+      : misconceptionCount > 0
+        ? '先修迷思'
+        : liveAccuracy.value >= 80 || correct / Math.max(1, answered) >= 0.8
+          ? '穩定前進'
+          : '需要回補';
+
+  return {
+    status,
+    metrics: [
+      {
+        label: '7日局數',
+        value: `${runs.length}`,
+        detail: liveAnswered > 0 ? `本局 ${liveAnswered} 答` : '完成後累積',
+      },
+      {
+        label: '正確率',
+        value: accuracyText,
+        detail: answered === 0 ? '等待資料' : `${correct}/${answered} 題`,
+      },
+      {
+        label: '修復/迷思',
+        value: `${reviewed}/${misconceptionCount}`,
+        detail: misconceptionCount > 0 ? '先修迷思' : '觀察中',
+      },
+    ],
+    action:
+      answered === 0
+        ? '完成第一局後，週報卡會整理孩子的下一步練習方向。'
+        : `下次建議練 ${practiceCount} 題，優先順序：${focusLabel}。`,
   };
 });
 const missionEntries = computed(() => {
@@ -1505,6 +1597,97 @@ function shouldUsePerformanceMode(): boolean {
   font-size: 0.8rem;
   font-weight: 850;
   opacity: 0.9;
+}
+
+.weekly-coach-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #075985;
+  line-height: 1.35;
+}
+
+.setup-weekly-coach {
+  width: min(760px, 100%);
+  margin-top: -4px;
+  border-color: rgba(186, 230, 253, 0.42);
+  background: rgba(12, 74, 110, 0.42);
+  color: #e0f2fe;
+}
+
+.weekly-coach-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.weekly-coach-heading span,
+.weekly-coach-heading strong {
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.weekly-coach-heading span {
+  opacity: 0.82;
+}
+
+.weekly-coach-heading strong {
+  min-width: 0;
+  color: inherit;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.weekly-coach-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.weekly-coach-metrics span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 6px;
+  border: 1px solid rgba(14, 116, 144, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.setup-weekly-coach .weekly-coach-metrics span {
+  border-color: rgba(224, 242, 254, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.weekly-coach-metrics strong,
+.weekly-coach-metrics em,
+.weekly-coach-metrics small,
+.weekly-coach-card > small {
+  color: inherit;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.weekly-coach-metrics strong {
+  font-size: 1rem;
+}
+
+.weekly-coach-metrics em {
+  font-size: 0.68rem;
+  opacity: 0.78;
+}
+
+.weekly-coach-metrics small,
+.weekly-coach-card > small {
+  font-size: 0.72rem;
+  opacity: 0.88;
 }
 
 .retry-mission-track {
