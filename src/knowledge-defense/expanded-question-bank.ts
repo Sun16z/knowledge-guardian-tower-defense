@@ -131,6 +131,67 @@ function buildMathQuestions(grade: GradeId, term: TermId, exam: ExamId): QuizQue
     ),
   );
 
+  const extraBase = grade * 12 + (term === 'second' ? 5 : 0) + (exam === 'final' ? 7 : 0);
+  const step = grade + 3;
+  questions.push(
+    mathDraft(
+      grade,
+      term,
+      exam,
+      'math-unknown',
+      `${extraBase} + □ = ${extraBase + step}，□ 是多少？`,
+      step,
+      [step - 1, step + 2, extraBase],
+      '把等號右邊減掉已知的數。',
+      `${extraBase + step} - ${extraBase} = ${step}。`,
+    ),
+    textDraft(
+      grade,
+      term,
+      exam,
+      'math-compare-expression',
+      `下列哪個算式的結果最大？`,
+      `${extraBase + 4} + ${step + 6}`,
+      [`${extraBase + 4} + ${step}`, `${extraBase - 2} + ${step + 5}`, `${extraBase} + ${step + 3}`],
+      '先估每個算式的總和。',
+      `${extraBase + 4} + ${step + 6} 的總和最大。`,
+      'math',
+    ),
+    mathDraft(
+      grade,
+      term,
+      exam,
+      'math-resource',
+      `答對 ${grade + 6} 題，每題得 ${step + 2} 能量，又建塔花掉 ${grade + 5} 能量，剩下多少能量？`,
+      (grade + 6) * (step + 2) - (grade + 5),
+      [(grade + 6) + (step + 2) - (grade + 5), (grade + 6) * step, (grade + 6) * (step + 2)],
+      '先算總得分，再扣掉花掉的能量。',
+      `先算 ${(grade + 6)}×${step + 2}，再減 ${grade + 5}。`,
+    ),
+    mathDraft(
+      grade,
+      term,
+      exam,
+      'math-data-total',
+      `圖書角上午借出 ${extraBase + 3} 本，下午借出 ${extraBase + step} 本，全天共借出幾本？`,
+      extraBase * 2 + step + 3,
+      [extraBase + step + 3, extraBase * 2 + step, extraBase * 2 + step + 13],
+      '把上午和下午的數量相加。',
+      `${extraBase + 3}+${extraBase + step}=${extraBase * 2 + step + 3}。`,
+    ),
+    mathDraft(
+      grade,
+      term,
+      exam,
+      'math-balance',
+      `兩座知識塔共有 ${extraBase + step + 18} 能量，第一座有 ${extraBase + 8} 能量，第二座有多少？`,
+      step + 10,
+      [step + 8, step + 12, extraBase + step + 10],
+      '用總量減掉已知的一部分。',
+      `${extraBase + step + 18}-${extraBase + 8}=${step + 10}。`,
+    ),
+  );
+
   return questions.map(question);
 }
 
@@ -235,6 +296,41 @@ function languageTemplates(grade: GradeId, phase: string): TextTemplate[] {
       hint: '推論題需要回到文章找證據。',
       explanation: '推論要根據文本線索，而不是任意猜測。',
     },
+    {
+      prompt: `${phase}國語：下列哪一句最適合作為段落主題句？`,
+      answer: '守護知識需要先觀察，再做決定。',
+      wrongs: ['然後、但是、所以。', '藍色鉛筆在桌上跳舞。', '因為很快所以沒有。'],
+      hint: '主題句通常能概括整段重點。',
+      explanation: '主題句要能清楚說出段落主要內容。',
+    },
+    {
+      prompt: `${phase}國語：修改句子「我把作業寫完了，也檢查一遍」最需要注意什麼？`,
+      answer: '句意是否完整順暢',
+      wrongs: ['字越多越好', '一定不用標點', '只看紙張顏色'],
+      hint: '修句子要先看意思和語氣是否通順。',
+      explanation: '句子修改重點是完整、通順、符合語意。',
+    },
+    {
+      prompt: `${phase}國語：如果題目問「作者為什麼這樣做」，通常是在考？`,
+      answer: '原因與動機',
+      wrongs: ['字數多寡', '標點形狀', '頁碼位置'],
+      hint: '看到為什麼，要找原因。',
+      explanation: '「為什麼」常要求找出原因或動機。',
+    },
+    {
+      prompt: `${phase}國語：整理筆記時，哪一種做法最能幫助複習？`,
+      answer: '用關鍵詞和短句整理重點',
+      wrongs: ['整頁只畫圖案', '全部抄但不理解', '故意漏掉標題'],
+      hint: '好筆記要能幫助快速回想。',
+      explanation: '關鍵詞和短句能協助抓重點與回憶內容。',
+    },
+    {
+      prompt: `${phase}國語：判斷一段文字的語氣時，可以先看什麼？`,
+      answer: '用詞和標點',
+      wrongs: ['紙張厚度', '行距是不是一樣', '題號大小'],
+      hint: '語氣常藏在詞語和標點中。',
+      explanation: '用詞和標點能透露驚訝、疑問、轉折或肯定等語氣。',
+    },
   ];
 }
 
@@ -285,6 +381,41 @@ function englishTemplates(grade: GradeId, phase: string): TextTemplate[] {
       hint: '想想常見的人際關係單字。',
       explanation: 'friend 的意思是朋友。',
     },
+    {
+      prompt: `${phase}英文：選出正確的否定句。`,
+      answer: grade <= 2 ? 'I do not run.' : 'She does not like rain.',
+      wrongs: ['I not do run.', 'She not does rain.', 'Run not I do.'],
+      hint: '否定句常會用 do not 或 does not。',
+      explanation: '英文否定句要注意助動詞和字序。',
+    },
+    {
+      prompt: `${phase}英文：Where is the book? 這句在問什麼？`,
+      answer: '書在哪裡',
+      wrongs: ['書是誰的', '書有幾頁', '書是什麼顏色'],
+      hint: 'Where 用來問地點。',
+      explanation: 'Where is the book? 是在問書的位置。',
+    },
+    {
+      prompt: `${phase}英文：選出和「每天」最接近的英文。`,
+      answer: 'every day',
+      wrongs: ['yesterday', 'green day', 'next year'],
+      hint: 'every 有「每一個」的意思。',
+      explanation: 'every day 表示每天。',
+    },
+    {
+      prompt: `${phase}英文：下列哪一句的主詞是複數？`,
+      answer: 'The students are here.',
+      wrongs: ['The dog is here.', 'My sister is tall.', 'A bird can fly.'],
+      hint: '複數通常表示不只一個。',
+      explanation: 'students 是複數，所以搭配 are。',
+    },
+    {
+      prompt: `${phase}英文：protect 最接近哪一個意思？`,
+      answer: '保護',
+      wrongs: ['忘記', '跳舞', '購買'],
+      hint: '可以想 protect the environment。',
+      explanation: 'protect 表示保護。',
+    },
   ];
 }
 
@@ -326,6 +457,41 @@ function scienceTemplates(grade: GradeId, phase: string): TextTemplate[] {
       hint: '證據通常可觀察、可記錄。',
       explanation: '測量資料比感覺更能作為科學證據。',
     },
+    {
+      prompt: `${phase}${lower ? '生活/自然' : '自然'}：要比較哪種紙吸水快，最適合記錄什麼？`,
+      answer: '吸收同樣水量所需時間',
+      wrongs: ['紙張名字好不好聽', '桌子顏色', '誰先看到紙'],
+      hint: '要比較吸水快慢，就要記錄時間或吸水量。',
+      explanation: '用時間或吸水量記錄，才能公平比較。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/自然' : '自然'}：太陽、手電筒、螢火蟲都可以歸為哪一類？`,
+      answer: '會發光的物體',
+      wrongs: ['會吸水的物體', '會被磁鐵吸住的物體', '一定是植物'],
+      hint: '想想它們共同的特徵。',
+      explanation: '這些例子都能發出光。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/自然' : '自然'}：磁鐵實驗中，哪一種記錄較完整？`,
+      answer: '記下物品名稱和是否被吸引',
+      wrongs: ['只寫很好玩', '只畫笑臉', '完全不寫日期'],
+      hint: '記錄要能讓別人看懂結果。',
+      explanation: '物品名稱與結果能清楚呈現實驗發現。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/自然' : '自然'}：水從液態變成氣態，稱為？`,
+      answer: '蒸發',
+      wrongs: ['凝固', '沉澱', '磁化'],
+      hint: '想想水被加熱後變成水蒸氣。',
+      explanation: '液態水變成氣態水蒸氣稱為蒸發。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/自然' : '自然'}：觀察月亮形狀每天不同，最好怎麼做？`,
+      answer: '固定時間連續記錄',
+      wrongs: ['只看一天就下結論', '把日期全部擦掉', '只問誰比較喜歡月亮'],
+      hint: '變化需要連續觀察。',
+      explanation: '固定時間連續記錄，能看出月相變化。',
+    },
   ];
 }
 
@@ -366,6 +532,41 @@ function socialTemplates(grade: GradeId, phase: string): TextTemplate[] {
       wrongs: ['叫他不要說話', '立刻吵架', '故意破壞活動'],
       hint: '公共討論需要理由與尊重。',
       explanation: '整理理由並討論，能讓決定更公平。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/社會' : '社會'}：社區需要大家合作，最好的例子是？`,
+      answer: '一起維持環境整潔',
+      wrongs: ['故意亂丟垃圾', '破壞公園設施', '只顧自己方便'],
+      hint: '合作通常會讓大家都受益。',
+      explanation: '維持環境整潔是社區共同責任。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/社會' : '社會'}：看時間表安排活動時，最先要確認什麼？`,
+      answer: '活動開始和結束時間',
+      wrongs: ['字體漂不漂亮', '紙張是不是藍色', '誰拿著時間表'],
+      hint: '時間表用來安排先後和時間。',
+      explanation: '開始與結束時間能幫助安排活動順序。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/社會' : '社會'}：如果資料來源不同，內容也不同，較好的做法是？`,
+      answer: '比較來源並查更多證據',
+      wrongs: ['只相信最誇張的', '不看任何資料', '誰大聲就信誰'],
+      hint: '社會科常需要比較資料。',
+      explanation: '比較來源與證據能提升判斷的可靠度。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/社會' : '社會'}：選班級代表時，公平的方式是？`,
+      answer: '依規則投票或討論決定',
+      wrongs: ['只讓老師旁邊的人決定', '用猜拳決定所有事', '不讓任何人表達'],
+      hint: '公平需要明確規則和參與。',
+      explanation: '清楚規則與共同參與能讓選擇更公平。',
+    },
+    {
+      prompt: `${phase}${lower ? '生活/社會' : '社會'}：地圖上的比例尺可以幫助我們知道什麼？`,
+      answer: '地圖距離和實際距離的關係',
+      wrongs: ['今天會不會下雨', '河流的味道', '人口一定增加'],
+      hint: '比例尺和距離有關。',
+      explanation: '比例尺能把地圖上的距離換算成實際距離。',
     },
   ];
 }

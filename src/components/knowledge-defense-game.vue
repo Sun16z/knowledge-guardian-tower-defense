@@ -376,9 +376,11 @@ const currentQuestionHint = computed(() => state.currentQuestion.hint ?? state.c
 const totalAnswered = computed(() => subjectEntries.value.reduce((sum, subject) => sum + subject.total, 0));
 const totalCorrect = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].correct, 0));
 const totalReviewed = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].reviewed, 0));
+const runCorrectGoal = computed(() => 18 + state.grade * 2);
+const reviewGoal = computed(() => Math.max(3, Math.floor(runCorrectGoal.value / 7)));
 const missionEntries = computed(() => [
-  { label: '答對 8 題', value: `${totalCorrect.value}/8`, done: totalCorrect.value >= 8 },
-  { label: '修復 2 題錯題', value: `${totalReviewed.value}/2`, done: totalReviewed.value >= 2 },
+  { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
+  { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
   { label: '核心保持 8+', value: `${state.coreHp}/12`, done: state.coreHp >= 8 },
 ]);
 const latestRunSummary = computed(() => {
