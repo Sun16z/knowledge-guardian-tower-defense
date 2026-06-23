@@ -83,6 +83,11 @@
         <strong :style="{ color: retryMission.color }">補強 {{ retryMission.label }} {{ retryMission.practice }} 題</strong>
         <small>{{ retryMission.tip }} {{ retryMissionFocusText }}</small>
       </div>
+      <div v-if="runHistory.length > 0" class="parent-report setup-parent-report" aria-label="家長週報">
+        <span>家長週報</span>
+        <strong>{{ parentWeeklyReport.summary }}</strong>
+        <small>{{ parentWeeklyReport.nextStep }}</small>
+      </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
     </section>
@@ -358,7 +363,7 @@
           </div>
           <div class="commercial-note">
             <strong>家長摘要</strong>
-            <span>本局使用 {{ state.hintsUsed }} 次提示，錯題會自動重排，並保留能力弱點訊號，適合後續接訂閱題庫、錯題複習與班級報表。</span>
+            <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ parentWeeklyReport.nextStep }}</span>
           </div>
           <div class="history-note">
             <strong>最近戰績</strong>
@@ -436,6 +441,11 @@ interface RunBadge {
   progress: string;
   color: string;
   unlocked: boolean;
+}
+
+interface ParentWeeklyReport {
+  summary: string;
+  nextStep: string;
 }
 
 const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
@@ -665,6 +675,40 @@ const unlockedRunBadges = computed(() => runBadges.value.filter((badge) => badge
 const badgeSummaryText = computed(() => {
   if (unlockedRunBadges.value.length === 0) return '先拿暖身守護';
   return `已解鎖 ${unlockedRunBadges.value.length} 枚`;
+});
+const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weeklyRuns = runHistory.value.filter((run) => {
+    const time = new Date(run.date).getTime();
+    return Number.isFinite(time) && time >= weekAgo;
+  });
+  if (weeklyRuns.length === 0) {
+    return {
+      summary: '最近 7 日尚未完成戰績。',
+      nextStep: '先完成一局，系統會整理正確率、錯題修復與補強方向。',
+    };
+  }
+
+  const answered = weeklyRuns.reduce((sum, run) => sum + run.answered, 0);
+  const correct = weeklyRuns.reduce((sum, run) => sum + run.correct, 0);
+  const reviewed = weeklyRuns.reduce((sum, run) => sum + run.reviewed, 0);
+  const badgeCount = weeklyRuns.reduce((sum, run) => sum + (run.badges?.length ?? 0), 0);
+  const wins = weeklyRuns.filter((run) => run.status === 'won').length;
+  const accuracyText = answered === 0 ? '-' : `${Math.round((correct / answered) * 100)}%`;
+  const focusCounts = new Map<string, number>();
+  for (const run of weeklyRuns) {
+    if (!run.abilityFocus) continue;
+    focusCounts.set(run.abilityFocus, (focusCounts.get(run.abilityFocus) ?? 0) + 1);
+  }
+  const focusLabel = [...focusCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  const nextStep = focusLabel
+    ? `下次先補 ${focusLabel}，再挑戰一局。`
+    : '下次維持五科輪替，觀察哪一項能力開始掉分。';
+
+  return {
+    summary: `最近 7 日 ${weeklyRuns.length} 局 / 勝 ${wins} / 正確率 ${accuracyText} / 修復 ${reviewed} 題 / 徽章 ${badgeCount}`,
+    nextStep,
+  };
 });
 const missionEntries = computed(() => {
   const missions = [
@@ -1192,6 +1236,47 @@ function loadRunHistory(): RunSummary[] {
   font-size: 0.8rem;
   font-weight: 850;
   opacity: 0.88;
+}
+
+.parent-report {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #14532d;
+  line-height: 1.35;
+}
+
+.setup-parent-report {
+  width: min(760px, 100%);
+  margin-top: -4px;
+  border-color: rgba(187, 247, 208, 0.34);
+  background: rgba(20, 83, 45, 0.44);
+  color: #dcfce7;
+}
+
+.parent-report span {
+  font-size: 0.78rem;
+  font-weight: 900;
+  opacity: 0.82;
+}
+
+.parent-report strong {
+  min-width: 0;
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.parent-report small {
+  color: inherit;
+  font-size: 0.8rem;
+  font-weight: 850;
+  opacity: 0.9;
 }
 
 .retry-mission-track {
