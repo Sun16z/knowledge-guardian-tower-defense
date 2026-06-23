@@ -2,6 +2,7 @@ import { EXPANDED_QUESTION_BANK } from './expanded-question-bank';
 
 export type GradeId = 1 | 2 | 3 | 4 | 5 | 6;
 export type SubjectId = 'language' | 'english' | 'math' | 'science' | 'social';
+export type AbilityId = 'reading' | 'englishCommunication' | 'mathReasoning' | 'scienceInquiry' | 'socialJudgment';
 export type TermId = 'first' | 'second';
 export type ExamId = 'midterm' | 'final';
 export type QuestionDifficulty = '基礎' | '進階' | '挑戰';
@@ -103,6 +104,14 @@ export const SUBJECTS: Record<SubjectId, { label: string; color: string }> = {
   math: { label: '數學', color: '#f59e0b' },
   science: { label: '自然', color: '#10b981' },
   social: { label: '社會', color: '#3b82f6' },
+};
+
+export const ABILITIES: Record<AbilityId, { label: string; color: string; recoveryTip: string }> = {
+  reading: { label: '語文理解', color: '#ef4444', recoveryTip: '圈出關鍵詞，先判斷題目真正問什麼。' },
+  englishCommunication: { label: '英語溝通', color: '#8b5cf6', recoveryTip: '先找句型或單字線索，再回到選項比對。' },
+  mathReasoning: { label: '數學解題', color: '#f59e0b', recoveryTip: '把已知條件列出來，先決定要用哪個運算。' },
+  scienceInquiry: { label: '科學探究', color: '#10b981', recoveryTip: '先分清現象、原因與實驗變因。' },
+  socialJudgment: { label: '社會判讀', color: '#3b82f6', recoveryTip: '先看時間、地點與因果，再比較選項。' },
 };
 
 export const TERM_OPTIONS: Array<{ id: TermId; label: string }> = [
@@ -338,6 +347,14 @@ export function questionsForSelection(grade: GradeId, filter: QuizFilter): QuizQ
   );
   if (filtered.length > 0) return filtered;
   return questionsForGrade(grade);
+}
+
+export function getQuestionAbility(question: QuizQuestion): AbilityId {
+  if (question.subject === 'english') return 'englishCommunication';
+  if (question.subject === 'math') return 'mathReasoning';
+  if (question.subject === 'science') return 'scienceInquiry';
+  if (question.subject === 'social') return 'socialJudgment';
+  return 'reading';
 }
 
 export function getTowerType(id: TowerTypeId): TowerType {

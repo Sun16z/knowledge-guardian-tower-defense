@@ -5,8 +5,10 @@ import {
   TOWER_SLOTS,
   getEnemyType,
   getGradeConfig,
+  getQuestionAbility,
   getTowerType,
   questionsForSelection,
+  type AbilityId,
   type QuizFilter,
   type EnemyTypeId,
   type GradeConfig,
@@ -108,6 +110,7 @@ export interface KnowledgeGameState {
   subjectBoosts: Record<SubjectId, number>;
   lastAnswer?: AnswerResult;
   stats: Record<SubjectId, SubjectStats>;
+  abilityStats: Record<AbilityId, SubjectStats>;
   nextEnemyId: number;
   nextEffectId: number;
   nextLearningEventId: number;
@@ -162,6 +165,13 @@ export function createKnowledgeGameState(grade: GradeId, quizFilter: QuizFilter)
       science: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
       social: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
     },
+    abilityStats: {
+      reading: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      englishCommunication: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      mathReasoning: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      scienceInquiry: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      socialJudgment: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+    },
     nextEnemyId: 1,
     nextEffectId: 1,
     nextLearningEventId: 1,
@@ -193,14 +203,20 @@ export function answerQuestion(state: KnowledgeGameState, selectedIndex: number)
   const question = state.currentQuestion;
   const correct = selectedIndex === question.answerIndex;
   const stats = state.stats[question.subject];
+  const abilityStats = state.abilityStats[getQuestionAbility(question)];
   const isReview = state.reviewQuestionIds.includes(question.id);
   stats.total += 1;
+  abilityStats.total += 1;
 
   let energyDelta = 8;
   if (correct) {
     stats.correct += 1;
+    abilityStats.correct += 1;
     state.combo += 1;
-    if (isReview) stats.reviewed += 1;
+    if (isReview) {
+      stats.reviewed += 1;
+      abilityStats.reviewed += 1;
+    }
     energyDelta = 32 + state.grade * 3 + Math.min(state.combo * 3, 21) + (isReview ? 16 : 0);
     state.score += 120 + state.combo * 18 + state.grade * 10 + (isReview ? 90 : 0);
     state.mistakeStreak = 0;
@@ -228,6 +244,7 @@ export function answerQuestion(state: KnowledgeGameState, selectedIndex: number)
     state.combo = 0;
     state.mistakeStreak += 1;
     stats.mistakes += 1;
+    abilityStats.mistakes += 1;
     state.score = Math.max(0, state.score - 15);
     state.masteryFocus = Math.max(0, state.masteryFocus - 9);
     state.pressure = Math.min(100, state.pressure + 16 + state.mistakeStreak * 4);

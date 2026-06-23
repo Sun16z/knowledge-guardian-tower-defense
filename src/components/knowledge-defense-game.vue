@@ -255,7 +255,7 @@
           </div>
           <div class="weakness-card" :class="{ clear: !weaknessHasTarget }" aria-label="弱點回補">
             <div class="weakness-heading">
-              <span>弱點回補</span>
+              <span>科目回補</span>
               <strong :style="{ color: weaknessColor }">{{ weaknessLabel }}</strong>
             </div>
             <div class="weakness-track"><i :style="{ width: `${weaknessRepairPercent}%`, background: weaknessColor }"></i></div>
@@ -264,6 +264,18 @@
               <strong>{{ weaknessHasTarget ? `${weaknessOpenCount} 題待修復` : '穩定' }}</strong>
             </div>
             <small>{{ weaknessGuideText }}</small>
+          </div>
+          <div class="ability-repair-card" :class="{ clear: !abilityWeaknessHasTarget }" aria-label="能力回補">
+            <div class="ability-repair-heading">
+              <span>能力回補</span>
+              <strong :style="{ color: abilityWeaknessColor }">{{ abilityWeaknessLabel }}</strong>
+            </div>
+            <div class="ability-repair-track"><i :style="{ width: `${abilityWeaknessRepairPercent}%`, background: abilityWeaknessColor }"></i></div>
+            <div class="ability-repair-detail">
+              <span>{{ abilityWeaknessHasTarget ? `回補 ${abilityWeaknessRepaired} / ${abilityWeaknessRepairGoal}` : '能力穩定' }}</span>
+              <strong>{{ abilityWeaknessHasTarget ? `${abilityWeaknessAccuracy}%` : '穩定' }}</strong>
+            </div>
+            <small>{{ abilityWeaknessGuideText }}</small>
           </div>
           <div class="subject-bars">
             <div v-for="subject in subjectEntries" :key="subject.id" class="subject-row">
@@ -286,7 +298,7 @@
           </div>
           <div class="commercial-note">
             <strong>家長摘要</strong>
-            <span>本局使用 {{ state.hintsUsed }} 次提示，錯題會自動重排，適合後續接訂閱題庫、錯題複習與班級報表。</span>
+            <span>本局使用 {{ state.hintsUsed }} 次提示，錯題會自動重排，並保留能力弱點訊號，適合後續接訂閱題庫、錯題複習與班級報表。</span>
           </div>
           <div class="history-note">
             <strong>最近戰績</strong>
@@ -302,6 +314,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import {
+  ABILITIES,
   DEFAULT_QUIZ_FILTER,
   EXAM_OPTIONS,
   GRADE_CONFIGS,
@@ -311,11 +324,12 @@ import {
   TARGET_MODE_OPTIONS,
   TERM_OPTIONS,
   TOWER_TYPES,
+  getQuestionAbility,
   getTowerType,
   questionsForSelection,
+  type AbilityId,
   type ExamId,
   type GradeId,
-  type QuizQuestion,
   type QuizFilter,
   type SubjectId,
   type SubjectFilter,
@@ -351,15 +365,7 @@ interface RunSummary {
   hints: number;
 }
 
-type AbilityId = 'reading' | 'englishCommunication' | 'mathReasoning' | 'scienceInquiry' | 'socialJudgment';
-
-const abilityCategories: Array<{ id: AbilityId; label: string; color: string }> = [
-  { id: 'reading', label: '語文理解', color: '#ef4444' },
-  { id: 'englishCommunication', label: '英語溝通', color: '#8b5cf6' },
-  { id: 'mathReasoning', label: '數學解題', color: '#f59e0b' },
-  { id: 'scienceInquiry', label: '科學探究', color: '#10b981' },
-  { id: 'socialJudgment', label: '社會判讀', color: '#3b82f6' },
-];
+const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
 
 const optionLabels = ['A', 'B', 'C', 'D'];
 const RUN_HISTORY_KEY = 'knowledge-defense-run-history-v1';
@@ -456,6 +462,36 @@ const weaknessGuideText = computed(() => {
   }
   return `${weaknessEntry.value.label}錯題已修復，下一步維持正確率。`;
 });
+const abilityWeaknessEntry = computed(() => {
+  const ranked = abilityEntries.value
+    .filter((ability) => ability.mistakes > 0)
+    .map((ability) => ({
+      ...ability,
+      openMistakes: Math.max(0, ability.mistakes - ability.reviewed),
+    }))
+    .sort((a, b) => b.openMistakes - a.openMistakes || b.mistakes - a.mistakes || a.accuracy - b.accuracy);
+  return ranked[0];
+});
+const abilityWeaknessHasTarget = computed(() => Boolean(abilityWeaknessEntry.value));
+const abilityWeaknessLabel = computed(() => abilityWeaknessEntry.value?.label ?? '目前穩定');
+const abilityWeaknessColor = computed(() => abilityWeaknessEntry.value?.color ?? '#0f766e');
+const abilityWeaknessAccuracy = computed(() => abilityWeaknessEntry.value?.accuracy ?? 100);
+const abilityWeaknessOpenCount = computed(() => abilityWeaknessEntry.value?.openMistakes ?? 0);
+const abilityWeaknessRepairGoal = computed(() =>
+  abilityWeaknessEntry.value ? Math.max(1, Math.ceil(abilityWeaknessEntry.value.mistakes * 0.6)) : 1,
+);
+const abilityWeaknessRepaired = computed(() => Math.min(abilityWeaknessEntry.value?.reviewed ?? 0, abilityWeaknessRepairGoal.value));
+const abilityWeaknessRepairPercent = computed(() =>
+  Math.min(100, Math.round((abilityWeaknessRepaired.value / abilityWeaknessRepairGoal.value) * 100)),
+);
+const abilityWeaknessGuideText = computed(() => {
+  const ability = abilityWeaknessEntry.value;
+  if (!ability) return '五種能力目前都穩定，下一題可以維持節奏。';
+  if (abilityWeaknessOpenCount.value > 0) {
+    return `${ability.label}還有 ${abilityWeaknessOpenCount.value} 題待修復。${ability.recoveryTip}`;
+  }
+  return `${ability.label}已回補。${ability.recoveryTip}`;
+});
 const missionEntries = computed(() => [
   { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
   { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
@@ -493,7 +529,7 @@ const setupSubjectCounts = computed(() =>
 const setupAbilityCounts = computed(() => {
   const counts = new Map<AbilityId, number>(abilityCategories.map((ability) => [ability.id, 0]));
   for (const question of currentSelectionQuestions.value) {
-    const ability = abilityForQuestion(question);
+    const ability = getQuestionAbility(question);
     counts.set(ability, (counts.get(ability) ?? 0) + 1);
   }
   return abilityCategories
@@ -513,13 +549,15 @@ const subjectEntries = computed(() =>
   })),
 );
 
-function abilityForQuestion(question: QuizQuestion): AbilityId {
-  if (question.subject === 'english') return 'englishCommunication';
-  if (question.subject === 'math') return 'mathReasoning';
-  if (question.subject === 'science') return 'scienceInquiry';
-  if (question.subject === 'social') return 'socialJudgment';
-  return 'reading';
-}
+const abilityEntries = computed(() =>
+  abilityCategories.map((ability) => ({
+    ...ability,
+    total: state.abilityStats[ability.id].total,
+    accuracy: accuracy(state.abilityStats[ability.id]),
+    mistakes: state.abilityStats[ability.id].mistakes,
+    reviewed: state.abilityStats[ability.id].reviewed,
+  })),
+);
 const activeBoostEntries = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[])
     .map((id) => ({
@@ -1525,24 +1563,37 @@ function loadRunHistory(): RunSummary[] {
   background: linear-gradient(90deg, #2563eb, #0f766e);
 }
 
-.weakness-card {
+.weakness-card,
+.ability-repair-card {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border: 1px solid #fed7aa;
   border-radius: 8px;
+}
+
+.weakness-card {
+  border: 1px solid #fed7aa;
   background: #fff7ed;
   color: #7c2d12;
 }
 
-.weakness-card.clear {
+.ability-repair-card {
+  border: 1px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #4c1d95;
+}
+
+.weakness-card.clear,
+.ability-repair-card.clear {
   border-color: #bbf7d0;
   background: #f0fdf4;
   color: #14532d;
 }
 
 .weakness-heading,
-.weakness-detail {
+.weakness-detail,
+.ability-repair-heading,
+.ability-repair-detail {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1552,7 +1603,10 @@ function loadRunHistory(): RunSummary[] {
 
 .weakness-heading span,
 .weakness-detail span,
-.weakness-card small {
+.weakness-card small,
+.ability-repair-heading span,
+.ability-repair-detail span,
+.ability-repair-card small {
   min-width: 0;
   color: #64748b;
   font-size: 0.78rem;
@@ -1560,33 +1614,50 @@ function loadRunHistory(): RunSummary[] {
   line-height: 1.35;
 }
 
-.weakness-heading strong {
+.weakness-heading strong,
+.ability-repair-heading strong {
   font-size: 1rem;
   white-space: nowrap;
 }
 
-.weakness-detail strong {
+.weakness-detail strong,
+.ability-repair-detail strong {
   color: #9a3412;
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
-.weakness-card.clear .weakness-detail strong {
+.ability-repair-detail strong {
+  color: #6d28d9;
+}
+
+.weakness-card.clear .weakness-detail strong,
+.ability-repair-card.clear .ability-repair-detail strong {
   color: #15803d;
 }
 
-.weakness-track {
+.weakness-track,
+.ability-repair-track {
   height: 10px;
   overflow: hidden;
   border-radius: 999px;
+}
+
+.weakness-track {
   background: #ffedd5;
 }
 
-.weakness-card.clear .weakness-track {
+.ability-repair-track {
+  background: #ddd6fe;
+}
+
+.weakness-card.clear .weakness-track,
+.ability-repair-card.clear .ability-repair-track {
   background: #dcfce7;
 }
 
-.weakness-track i {
+.weakness-track i,
+.ability-repair-track i {
   display: block;
   height: 100%;
   border-radius: inherit;
