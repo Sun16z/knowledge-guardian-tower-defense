@@ -54,6 +54,8 @@ export interface TowerType {
   color: string;
   light: string;
   role: string;
+  strategy: string;
+  upgradeHint: string;
 }
 
 export interface EnemyType {
@@ -136,6 +138,8 @@ export const TOWER_TYPES: TowerType[] = [
     color: '#f97316',
     light: '#fed7aa',
     role: '高傷害',
+    strategy: '適合處理高血量敵人，放在長直線旁最穩。',
+    upgradeHint: '升級後單體傷害成長最快。',
   },
   {
     id: 'english',
@@ -152,6 +156,8 @@ export const TOWER_TYPES: TowerType[] = [
     color: '#7c3aed',
     light: '#ede9fe',
     role: '連擊',
+    strategy: '射速快且能緩速，適合守住轉角與漏網敵人。',
+    upgradeHint: '升級後緩速時間拉長，能拖出更多解題時間。',
   },
   {
     id: 'word',
@@ -168,6 +174,8 @@ export const TOWER_TYPES: TowerType[] = [
     color: '#e11d48',
     light: '#fecdd3',
     role: '快攻',
+    strategy: '便宜且密集輸出，適合前期補洞與打小群敵人。',
+    upgradeHint: '升級後射速提升，搭配連擊共鳴很有感。',
   },
   {
     id: 'nature',
@@ -184,6 +192,8 @@ export const TOWER_TYPES: TowerType[] = [
     color: '#0891b2',
     light: '#cffafe',
     role: '緩速',
+    strategy: '讓快速敵人慢下來，適合放在路線中段。',
+    upgradeHint: '升級後控場能力更穩，能保護核心前最後一段。',
   },
   {
     id: 'map',
@@ -200,6 +210,8 @@ export const TOWER_TYPES: TowerType[] = [
     color: '#2563eb',
     light: '#dbeafe',
     role: '範圍',
+    strategy: '打群體最有效，適合靠近彎道或敵人密集處。',
+    upgradeHint: '升級後範圍傷害擴大，能處理後期混合波。',
   },
 ];
 

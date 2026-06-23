@@ -11,6 +11,8 @@ const FIELD_HEIGHT = 600;
 interface EnemyRender {
   group: THREE.Group;
   hpFill: THREE.Mesh;
+  lastHp: number;
+  hitFlash: number;
 }
 
 interface TowerRender {
@@ -69,7 +71,7 @@ export class KnowledgeDefenseThreeScene {
     if (this.disposed) return;
     this.resizeIfNeeded();
     this.updateSlots(selectedTowerType);
-    this.updateTowers(state.towers);
+    this.updateTowers(state);
     this.updateEnemies(state.enemies);
     this.updateEffects(state.effects);
 
@@ -171,6 +173,20 @@ export class KnowledgeDefenseThreeScene {
       road.rotation.y = angle;
       road.receiveShadow = true;
       this.scene.add(road);
+
+      const arrowCount = Math.max(1, Math.floor(length / 2.3));
+      for (let arrowIndex = 1; arrowIndex <= arrowCount; arrowIndex += 1) {
+        const ratio = arrowIndex / (arrowCount + 1);
+        const arrow = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.34, 3),
+          new THREE.MeshStandardMaterial({ color: '#fff7ed', roughness: 0.64, emissive: '#f59e0b', emissiveIntensity: 0.08 }),
+        );
+        arrow.position.set(start.x + dx * ratio, 0.19, start.z + dz * ratio);
+        arrow.rotation.set(Math.PI / 2, 0, angle - Math.PI / 2);
+        arrow.castShadow = false;
+        arrow.receiveShadow = true;
+        this.scene.add(arrow);
+      }
     }
 
     const capMaterial = new THREE.MeshStandardMaterial({ color: '#fef3c7', roughness: 0.78 });
@@ -297,6 +313,15 @@ export class KnowledgeDefenseThreeScene {
       group.add(marker);
       this.slotTargets.push(marker);
 
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.24, 10),
+        new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.42, emissive: '#ffffff', emissiveIntensity: 0.18 }),
+      );
+      beacon.position.y = 0.27;
+      beacon.userData.slotId = slot.id;
+      group.add(beacon);
+      this.slotTargets.push(beacon);
+
       this.scene.add(group);
     }
   }
@@ -314,7 +339,8 @@ export class KnowledgeDefenseThreeScene {
     }
   }
 
-  private updateTowers(towers: TowerState[]): void {
+  private updateTowers(state: KnowledgeGameState): void {
+    const towers = state.towers;
     const active = new Set(towers.map((tower) => tower.slotId));
     for (const [slotId, render] of this.towerRenders) {
       if (!active.has(slotId)) {
@@ -332,11 +358,22 @@ export class KnowledgeDefenseThreeScene {
         this.scene.add(render.group);
       }
       const towerType = getTowerType(tower.typeId);
+      const boosted = state.subjectBoosts[towerType.subject] > 0;
       render.group.scale.setScalar(1 + (tower.level - 1) * 0.13);
       const head = render.group.getObjectByName('tower-head') as THREE.Mesh | undefined;
-      if (head) head.rotation.y += 0.04 + tower.level * 0.006;
+      if (head) {
+        head.rotation.y += boosted ? 0.08 : 0.04 + tower.level * 0.006;
+        if (head.material instanceof THREE.MeshStandardMaterial) {
+          head.material.emissiveIntensity = boosted ? 0.42 : 0.08;
+        }
+      }
+      const light = render.group.getObjectByName('tower-light') as THREE.PointLight | undefined;
+      if (light) light.intensity = boosted ? 1.15 : 0.48;
       render.range.scale.setScalar(towerType.range / 60);
-      render.range.visible = tower.level >= 2;
+      render.range.visible = boosted || tower.level >= 2;
+      if (render.range.material instanceof THREE.MeshBasicMaterial) {
+        render.range.material.opacity = boosted ? 0.18 : 0.1;
+      }
     }
   }
 
@@ -391,6 +428,7 @@ export class KnowledgeDefenseThreeScene {
     group.add(gem);
 
     const pointLight = new THREE.PointLight(towerType.color, 0.48, 2.5);
+    pointLight.name = 'tower-light';
     pointLight.position.y = 1.1;
     group.add(pointLight);
 
@@ -416,14 +454,22 @@ export class KnowledgeDefenseThreeScene {
         this.scene.add(render.group);
       }
       const point = pointAtEnemyProgress(enemy.progress);
-      render.group.position.set(point.x, 0.54 + Math.sin(elapsed * 5 + enemy.id) * 0.04, point.z);
+      if (enemy.hp < render.lastHp) {
+        render.hitFlash = 0.22;
+      }
+      render.lastHp = enemy.hp;
+      render.hitFlash = Math.max(0, render.hitFlash - 0.045);
+      const hitPulse = render.hitFlash > 0 ? 1 + render.hitFlash * 0.42 : 1;
+      render.group.position.set(point.x, 0.54 + Math.sin(elapsed * 5 + enemy.id) * 0.04 + render.hitFlash * 0.08, point.z);
       render.group.rotation.y += enemy.typeId === 'clock' ? 0.06 : 0.025;
-      render.group.scale.setScalar(enemy.typeId === 'blank' ? 1.15 : 1);
+      render.group.scale.setScalar((enemy.typeId === 'blank' ? 1.15 : 1) * hitPulse);
       render.hpFill.scale.x = Math.max(0.02, enemy.hp / enemy.maxHp);
       const body = render.group.getObjectByName('enemy-body') as THREE.Mesh | undefined;
       const enemyType = getEnemyType(enemy.typeId);
       if (body?.material instanceof THREE.MeshStandardMaterial) {
         body.material.color.set(enemy.slowTimer > 0 ? enemyType.light : enemyType.color);
+        body.material.emissive.set(render.hitFlash > 0 ? '#fff7ed' : '#000000');
+        body.material.emissiveIntensity = render.hitFlash > 0 ? 0.7 : 0;
       }
     }
   }
@@ -463,7 +509,7 @@ export class KnowledgeDefenseThreeScene {
     hpFill.position.set(0, 0.665, 0.08);
     group.add(hpFill);
 
-    return { group, hpFill };
+    return { group, hpFill, lastHp: enemy.hp, hitFlash: 0 };
   }
 
   private updateEffects(effects: ShotEffect[]): void {

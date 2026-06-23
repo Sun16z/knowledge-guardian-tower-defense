@@ -1,6 +1,7 @@
 import {
   ENEMY_TYPES,
   PATH_POINTS,
+  SUBJECTS,
   TOWER_SLOTS,
   getEnemyType,
   getGradeConfig,
@@ -61,6 +62,16 @@ export interface AnswerResult {
 export interface SubjectStats {
   total: number;
   correct: number;
+  reviewed: number;
+  mistakes: number;
+}
+
+export interface LearningEvent {
+  id: number;
+  tone: 'good' | 'warn' | 'info';
+  title: string;
+  detail: string;
+  ttl: number;
 }
 
 export interface KnowledgeGameState {
@@ -82,13 +93,22 @@ export interface KnowledgeGameState {
   enemies: EnemyState[];
   towers: TowerState[];
   effects: ShotEffect[];
+  learningEvents: LearningEvent[];
   questionDeck: QuizQuestion[];
   questionCursor: number;
   currentQuestion: QuizQuestion;
+  reviewQuestionIds: string[];
+  hintQuestionIds: string[];
+  hintsUsed: number;
+  mistakeStreak: number;
+  masteryFocus: number;
+  pressure: number;
+  subjectBoosts: Record<SubjectId, number>;
   lastAnswer?: AnswerResult;
   stats: Record<SubjectId, SubjectStats>;
   nextEnemyId: number;
   nextEffectId: number;
+  nextLearningEventId: number;
 }
 
 const segmentLengths = PATH_POINTS.slice(1).map((point, index) => distance(PATH_POINTS[index], point));
@@ -116,18 +136,33 @@ export function createKnowledgeGameState(grade: GradeId, quizFilter: QuizFilter)
     enemies: [],
     towers: [],
     effects: [],
+    learningEvents: [],
     questionDeck,
     questionCursor: 0,
     currentQuestion: questionDeck[0],
+    reviewQuestionIds: [],
+    hintQuestionIds: [],
+    hintsUsed: 0,
+    mistakeStreak: 0,
+    masteryFocus: 42,
+    pressure: 0,
+    subjectBoosts: {
+      language: 0,
+      english: 0,
+      math: 0,
+      science: 0,
+      social: 0,
+    },
     stats: {
-      language: { total: 0, correct: 0 },
-      english: { total: 0, correct: 0 },
-      math: { total: 0, correct: 0 },
-      science: { total: 0, correct: 0 },
-      social: { total: 0, correct: 0 },
+      language: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      english: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      math: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      science: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
+      social: { total: 0, correct: 0, reviewed: 0, mistakes: 0 },
     },
     nextEnemyId: 1,
     nextEffectId: 1,
+    nextLearningEventId: 1,
   };
 }
 
@@ -144,6 +179,7 @@ export function tickGame(state: KnowledgeGameState, deltaSeconds: number): void 
   state.time += dt;
 
   updateWaveSpawner(state, dt);
+  updateSubjectBoosts(state, dt);
   updateEnemies(state, dt);
   updateTowers(state, dt);
   collectDefeatedEnemies(state);
@@ -155,17 +191,46 @@ export function answerQuestion(state: KnowledgeGameState, selectedIndex: number)
   const question = state.currentQuestion;
   const correct = selectedIndex === question.answerIndex;
   const stats = state.stats[question.subject];
+  const isReview = state.reviewQuestionIds.includes(question.id);
   stats.total += 1;
 
   let energyDelta = 8;
   if (correct) {
     stats.correct += 1;
     state.combo += 1;
-    energyDelta = 32 + state.grade * 3 + Math.min(state.combo * 3, 21);
-    state.score += 120 + state.combo * 18 + state.grade * 10;
+    if (isReview) stats.reviewed += 1;
+    energyDelta = 32 + state.grade * 3 + Math.min(state.combo * 3, 21) + (isReview ? 16 : 0);
+    state.score += 120 + state.combo * 18 + state.grade * 10 + (isReview ? 90 : 0);
+    state.mistakeStreak = 0;
+    state.masteryFocus = Math.min(100, state.masteryFocus + (isReview ? 14 : 8));
+    state.pressure = Math.max(0, state.pressure - (isReview ? 12 : 6));
+    const alreadyBoosted = state.subjectBoosts[question.subject] > 0;
+    state.subjectBoosts[question.subject] = Math.max(state.subjectBoosts[question.subject], isReview ? 13 : 8);
+    if (!alreadyBoosted) {
+      pushLearningEvent(state, 'info', `${SUBJECTS[question.subject].label}共鳴`, '同科塔短暫提升傷害與射速。');
+    }
+    if (state.combo > 0 && state.combo % 4 === 0) {
+      energyDelta += 18;
+      state.pressure = Math.max(0, state.pressure - 8);
+      pushLearningEvent(state, 'good', `${state.combo} 連擊`, '穩定答題讓下一波壓力降低，額外獲得能量。');
+    }
+    if (isReview) {
+      state.reviewQuestionIds = state.reviewQuestionIds.filter((id) => id !== question.id);
+      pushLearningEvent(state, 'good', '錯題修復完成', `${SUBJECTS[question.subject].label}複習題答對，獲得額外能量。`);
+      if (state.coreHp < state.maxCoreHp) {
+        state.coreHp = Math.min(state.maxCoreHp, state.coreHp + 1);
+        pushLearningEvent(state, 'good', '核心修復', '把錯題補回來，知識核心恢復 1 點。');
+      }
+    }
   } else {
     state.combo = 0;
+    state.mistakeStreak += 1;
+    stats.mistakes += 1;
     state.score = Math.max(0, state.score - 15);
+    state.masteryFocus = Math.max(0, state.masteryFocus - 9);
+    state.pressure = Math.min(100, state.pressure + 16 + state.mistakeStreak * 4);
+    addReviewQuestion(state, question);
+    pushLearningEvent(state, 'warn', '錯題已排入複習', `第 ${Math.min(state.mistakeStreak + 2, 5)} 題內會再遇到它。`);
   }
 
   state.energy += energyDelta;
@@ -179,10 +244,6 @@ export function answerQuestion(state: KnowledgeGameState, selectedIndex: number)
     explanation: question.explanation,
   };
   state.lastAnswer = result;
-  if (!correct) {
-    const retryIndex = Math.min(state.questionCursor + 3, state.questionDeck.length);
-    state.questionDeck.splice(retryIndex, 0, question);
-  }
   advanceQuestion(state);
   return result;
 }
@@ -237,6 +298,18 @@ export function useFocusPulse(state: KnowledgeGameState): boolean {
   return true;
 }
 
+export function useQuestionHint(state: KnowledgeGameState): boolean {
+  const cost = 5;
+  const questionId = state.currentQuestion.id;
+  if (state.hintQuestionIds.includes(questionId) || state.energy < cost) return false;
+  state.energy -= cost;
+  state.hintQuestionIds.push(questionId);
+  state.hintsUsed += 1;
+  state.pressure = Math.max(0, state.pressure - 3);
+  pushLearningEvent(state, 'info', '提示已開啟', '先看提示再作答，答完仍會看到完整解題。');
+  return true;
+}
+
 export function getTowerAtSlot(state: KnowledgeGameState, slotId: string): TowerState | undefined {
   return state.towers.find((tower) => tower.slotId === slotId);
 }
@@ -283,9 +356,13 @@ function updateWaveSpawner(state: KnowledgeGameState, dt: number): void {
   state.nextWaveIn -= dt;
   if (state.nextWaveIn <= 0) {
     state.wave += 1;
-    state.spawnQueue = 4 + state.wave + Math.floor(state.grade / 2);
+    const pressureAdds = state.pressure >= 72 ? 2 : state.pressure >= 42 ? 1 : 0;
+    const masteryRelief = state.masteryFocus >= 82 ? 1 : 0;
+    state.spawnQueue = Math.max(4, 4 + state.wave + Math.floor(state.grade / 2) + pressureAdds - masteryRelief);
     state.spawnTimer = 0.1;
-    state.nextWaveIn = Math.max(9.5, 18 - state.wave * 0.55);
+    state.nextWaveIn = Math.max(8.5, 18 - state.wave * 0.55 - pressureAdds * 0.8 + masteryRelief * 1.4);
+    state.pressure = Math.min(100, state.pressure + 4 + pressureAdds * 2);
+    pushLearningEvent(state, 'info', `第 ${state.wave} 波開始`, describeWavePreview(state.wave, state.grade));
   }
 }
 
@@ -311,6 +388,7 @@ function updateEnemies(state: KnowledgeGameState, dt: number): void {
 function updateTowers(state: KnowledgeGameState, dt: number): void {
   for (const tower of state.towers) {
     const towerType = getTowerType(tower.typeId);
+    const boosted = state.subjectBoosts[towerType.subject] > 0;
     tower.cooldown -= dt;
     if (tower.cooldown > 0) continue;
     const slot = getTowerSlot(tower.slotId);
@@ -319,9 +397,9 @@ function updateTowers(state: KnowledgeGameState, dt: number): void {
     const target = findTarget(state, slot, towerType.range);
     if (!target) continue;
 
-    tower.cooldown = towerType.fireRate * Math.max(0.52, 1 - (tower.level - 1) * 0.1);
+    tower.cooldown = towerType.fireRate * Math.max(0.48, 1 - (tower.level - 1) * 0.1) * (boosted ? 0.86 : 1);
     tower.shots += 1;
-    const damage = towerType.damage * (1 + (tower.level - 1) * 0.48);
+    const damage = towerType.damage * (1 + (tower.level - 1) * 0.48) * (boosted ? 1.2 : 1);
     target.hp -= damage;
     if (towerType.slowSeconds > 0) {
       target.slowTimer = Math.max(target.slowTimer, towerType.slowSeconds + (tower.level - 1) * 0.22);
@@ -360,6 +438,16 @@ function updateEffects(state: KnowledgeGameState, dt: number): void {
     effect.ttl -= dt;
   }
   state.effects = state.effects.filter((effect) => effect.ttl > 0);
+  for (const event of state.learningEvents) {
+    event.ttl -= dt;
+  }
+  state.learningEvents = state.learningEvents.filter((event) => event.ttl > 0);
+}
+
+function updateSubjectBoosts(state: KnowledgeGameState, dt: number): void {
+  for (const subject of Object.keys(state.subjectBoosts) as SubjectId[]) {
+    state.subjectBoosts[subject] = Math.max(0, state.subjectBoosts[subject] - dt);
+  }
 }
 
 function checkEndState(state: KnowledgeGameState): void {
@@ -395,6 +483,22 @@ function chooseEnemyType(wave: number, queue: number): EnemyTypeId {
   if (wave >= 3 && queue % 4 === 0) return 'clock';
   if (wave >= 2 && queue % 3 === 0) return 'careless';
   return ENEMY_TYPES[(wave + queue) % 2].id;
+}
+
+export function previewEnemyTypes(wave: number, grade: GradeId): EnemyTypeId[] {
+  const count = 4 + wave + Math.floor(grade / 2);
+  const types = new Set<EnemyTypeId>();
+  for (let queue = count; queue >= 1; queue -= 1) {
+    types.add(chooseEnemyType(wave, queue));
+  }
+  return [...types];
+}
+
+export function describeWavePreview(wave: number, grade: GradeId): string {
+  const names = previewEnemyTypes(wave, grade)
+    .map((typeId) => getEnemyType(typeId).name)
+    .join('、');
+  return `預估出現：${names}`;
 }
 
 function findTarget(state: KnowledgeGameState, slot: Point, range: number): EnemyState | undefined {
@@ -444,6 +548,26 @@ function advanceQuestion(state: KnowledgeGameState): void {
     state.questionCursor = 0;
   }
   state.currentQuestion = state.questionDeck[state.questionCursor];
+}
+
+function addReviewQuestion(state: KnowledgeGameState, question: QuizQuestion): void {
+  if (!state.reviewQuestionIds.includes(question.id)) {
+    state.reviewQuestionIds.push(question.id);
+  }
+  const retryOffset = Math.max(2, 5 - state.mistakeStreak);
+  const retryIndex = Math.min(state.questionCursor + retryOffset, state.questionDeck.length);
+  state.questionDeck.splice(retryIndex, 0, question);
+}
+
+function pushLearningEvent(state: KnowledgeGameState, tone: LearningEvent['tone'], title: string, detail: string): void {
+  state.learningEvents.unshift({
+    id: state.nextLearningEventId++,
+    tone,
+    title,
+    detail,
+    ttl: 5.2,
+  });
+  state.learningEvents = state.learningEvents.slice(0, 4);
 }
 
 function shuffled<T>(items: T[]): T[] {

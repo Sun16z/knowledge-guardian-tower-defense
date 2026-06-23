@@ -77,6 +77,8 @@
           </div>
           <div class="hud-metrics">
             <span>能量 {{ state.energy }}</span>
+            <span>連擊 {{ state.combo }}</span>
+            <span>複習 {{ reviewCount }}</span>
             <span>波次 {{ state.wave }} / {{ state.targetWaves }}</span>
             <span>分數 {{ state.score }}</span>
             <button class="sound-button" type="button" :aria-pressed="soundEnabled" @click="toggleSound">
@@ -94,11 +96,36 @@
             <span>進度</span>
             <div class="meter-track wave"><i :style="{ width: `${wavePercent}%` }"></i></div>
           </div>
+          <div class="meter compact-meter">
+            <span>{{ masteryLabel }}</span>
+            <div class="meter-track mastery"><i :style="{ width: `${state.masteryFocus}%` }"></i></div>
+          </div>
+          <div class="meter compact-meter">
+            <span>{{ pressureLabel }}</span>
+            <div class="meter-track pressure"><i :style="{ width: `${state.pressure}%` }"></i></div>
+          </div>
+        </div>
+
+        <div class="wave-intel">
+          <span>下一波</span>
+          <strong>{{ nextWaveLabel }}</strong>
+          <small>{{ nextWavePreview }}</small>
         </div>
 
         <div class="battlefield" aria-label="知識塔防 3D 戰場">
           <div ref="battle3dHost" class="battle-canvas" role="img" aria-label="原創低多邊形 3D 知識塔防戰場">
             <span class="scene-chip">原創 3D 幾何戰場</span>
+            <div v-if="state.learningEvents.length > 0" class="event-stack" aria-live="polite">
+              <div
+                v-for="event in state.learningEvents"
+                :key="event.id"
+                class="event-toast"
+                :class="event.tone"
+              >
+                <strong>{{ event.title }}</strong>
+                <span>{{ event.detail }}</span>
+              </div>
+            </div>
             <div v-if="state.lastAnswer" class="field-feedback" :class="{ correct: state.lastAnswer.correct }">
               <strong>{{ state.lastAnswer.correct ? '答對，能量提升' : `正解：${state.lastAnswer.correctAnswer}` }}</strong>
               <span>{{ state.lastAnswer.correct ? state.lastAnswer.explanation : `提示：${state.lastAnswer.hint}` }}</span>
@@ -120,8 +147,14 @@
           <div class="card-heading">
             <span :style="{ background: currentSubject.color }">{{ currentSubject.label }}</span>
             <strong>{{ currentQuestionMeta }} / 第 {{ state.questionCursor + 1 }} 題</strong>
+            <em v-if="currentQuestionIsReview">錯題複習</em>
           </div>
           <p class="question-text">{{ state.currentQuestion.prompt }}</p>
+          <div class="hint-strip" :class="{ open: currentHintVisible }">
+            <button type="button" :disabled="currentHintVisible || state.energy < 5" @click="revealHint">提示 -5 能量</button>
+            <span v-if="currentHintVisible">{{ currentQuestionHint }}</span>
+            <span v-else>先自己想，再需要時打開提示。</span>
+          </div>
           <div class="answer-grid">
             <button
               v-for="(option, index) in state.currentQuestion.options"
@@ -164,6 +197,12 @@
               </span>
             </button>
           </div>
+          <div class="tower-insight" :class="{ boosted: selectedTowerBoostSeconds > 0 }">
+            <strong>{{ SUBJECTS[selectedTower.subject].label }} / {{ selectedTower.role }}</strong>
+            <span>{{ selectedTower.strategy }}</span>
+            <small>{{ selectedTower.upgradeHint }}</small>
+            <em v-if="selectedTowerBoostSeconds > 0">共鳴中 {{ selectedTowerBoostSeconds }} 秒</em>
+          </div>
           <button class="pulse-button" type="button" :disabled="!canPulse" @click="triggerFocusPulse">全域聚焦 88</button>
         </section>
 
@@ -177,11 +216,28 @@
               <span>{{ subject.label }}</span>
               <div><i :style="{ width: `${subject.accuracy}%`, background: subject.color }"></i></div>
               <strong>{{ subject.total === 0 ? '-' : `${subject.accuracy}%` }}</strong>
+              <small>{{ subject.mistakes }} 錯 / {{ subject.reviewed }} 修復</small>
+            </div>
+          </div>
+          <div v-if="activeBoostEntries.length > 0" class="boost-row">
+            <span v-for="boost in activeBoostEntries" :key="boost.id" :style="{ borderColor: boost.color }">
+              {{ boost.label }}共鳴 {{ boost.seconds }} 秒
+            </span>
+          </div>
+          <div class="mission-list">
+            <div v-for="mission in missionEntries" :key="mission.label" :class="{ done: mission.done }">
+              <span>{{ mission.label }}</span>
+              <strong>{{ mission.value }}</strong>
             </div>
           </div>
           <div class="commercial-note">
             <strong>家長摘要</strong>
-            <span>本版只保存本局資料，適合後續接訂閱題庫、錯題複習與班級報表。</span>
+            <span>本局使用 {{ state.hintsUsed }} 次提示，錯題會自動重排，適合後續接訂閱題庫、錯題複習與班級報表。</span>
+          </div>
+          <div class="history-note">
+            <strong>最近戰績</strong>
+            <span v-if="runHistory.length === 0">完成一局後會在這裡留下本機紀錄。</span>
+            <span v-else>{{ latestRunSummary }}</span>
           </div>
         </section>
       </aside>
@@ -220,12 +276,26 @@ import {
   tickGame,
   upgradeTower,
   useFocusPulse,
+  useQuestionHint,
+  describeWavePreview,
 } from '../knowledge-defense/engine';
 import type { ShotEffect } from '../knowledge-defense/engine';
 import { KnowledgeDefenseAudio } from '../knowledge-defense/audio';
 import { KnowledgeDefenseThreeScene } from '../knowledge-defense/three-scene';
 
+interface RunSummary {
+  date: string;
+  grade: GradeId;
+  status: 'won' | 'lost';
+  score: number;
+  answered: number;
+  correct: number;
+  reviewed: number;
+  hints: number;
+}
+
 const optionLabels = ['A', 'B', 'C', 'D'];
+const RUN_HISTORY_KEY = 'knowledge-defense-run-history-v1';
 const gradeConfigs = GRADE_CONFIGS;
 const towerTypes = TOWER_TYPES;
 const termOptions = TERM_OPTIONS;
@@ -236,11 +306,14 @@ const state = reactive(createKnowledgeGameState(1, quizFilter));
 const selectedTowerType = ref<TowerTypeId>('number');
 const soundEnabled = ref(true);
 const battle3dHost = ref<HTMLElement | null>(null);
+const runHistory = ref<RunSummary[]>([]);
 let threeScene: KnowledgeDefenseThreeScene | null = null;
 let audio: KnowledgeDefenseAudio | null = null;
 const heardEffectIds = new Set<number>();
 let animationFrame = 0;
 let lastFrame = 0;
+let heardWave = 0;
+let savedResultStatus: 'won' | 'lost' | '' = '';
 
 const statusLabel = computed(() => {
   if (state.status === 'ready') return '部署階段';
@@ -254,6 +327,45 @@ const corePercent = computed(() => Math.round((state.coreHp / state.maxCoreHp) *
 const wavePercent = computed(() => Math.min(100, Math.round((state.wave / state.targetWaves) * 100)));
 const selectedTower = computed(() => getTowerType(selectedTowerType.value));
 const canPulse = computed(() => state.energy >= 88 && state.status === 'running' && state.enemies.length > 0);
+const selectedTowerBoostSeconds = computed(() => Math.ceil(state.subjectBoosts[selectedTower.value.subject] ?? 0));
+const reviewCount = computed(() => state.reviewQuestionIds.length);
+const currentQuestionIsReview = computed(() => state.reviewQuestionIds.includes(state.currentQuestion.id));
+const masteryLabel = computed(() => {
+  if (state.masteryFocus >= 78) return '掌握穩定';
+  if (state.masteryFocus >= 48) return '掌握累積';
+  return '需要複習';
+});
+const pressureLabel = computed(() => {
+  if (state.pressure >= 72) return '壓力偏高';
+  if (state.pressure >= 36) return '壓力升高';
+  return '壓力穩定';
+});
+const nextWaveLabel = computed(() => {
+  if (state.status === 'ready') return '開始後第 1 波';
+  if (state.wave >= state.targetWaves) return '最終清場';
+  return `${Math.ceil(state.nextWaveIn)} 秒後第 ${state.wave + 1} 波`;
+});
+const nextWavePreview = computed(() => {
+  const wave = Math.min(state.targetWaves, state.wave + 1);
+  return describeWavePreview(wave, state.grade);
+});
+const currentHintVisible = computed(() => state.hintQuestionIds.includes(state.currentQuestion.id));
+const currentQuestionHint = computed(() => state.currentQuestion.hint ?? state.currentQuestion.explanation);
+const totalAnswered = computed(() => subjectEntries.value.reduce((sum, subject) => sum + subject.total, 0));
+const totalCorrect = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].correct, 0));
+const totalReviewed = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].reviewed, 0));
+const missionEntries = computed(() => [
+  { label: '答對 8 題', value: `${totalCorrect.value}/8`, done: totalCorrect.value >= 8 },
+  { label: '修復 2 題錯題', value: `${totalReviewed.value}/2`, done: totalReviewed.value >= 2 },
+  { label: '核心保持 8+', value: `${state.coreHp}/12`, done: state.coreHp >= 8 },
+]);
+const latestRunSummary = computed(() => {
+  const latest = runHistory.value[0];
+  if (!latest) return '';
+  const result = latest.status === 'won' ? '成功' : '再挑戰';
+  const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題`;
+});
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
 const currentQuestionMeta = computed(() => {
@@ -271,7 +383,19 @@ const subjectEntries = computed(() =>
     color: SUBJECTS[id].color,
     total: state.stats[id].total,
     accuracy: accuracy(state.stats[id]),
+    mistakes: state.stats[id].mistakes,
+    reviewed: state.stats[id].reviewed,
   })),
+);
+const activeBoostEntries = computed(() =>
+  (Object.keys(SUBJECTS) as SubjectId[])
+    .map((id) => ({
+      id,
+      label: SUBJECTS[id].label,
+      color: SUBJECTS[id].color,
+      seconds: Math.ceil(state.subjectBoosts[id] ?? 0),
+    }))
+    .filter((item) => item.seconds > 0),
 );
 
 function selectGrade(grade: GradeId): void {
@@ -326,6 +450,11 @@ function triggerFocusPulse(): void {
   if (used) audio?.playFocusPulse();
 }
 
+function revealHint(): void {
+  void audio?.ensureStarted();
+  useQuestionHint(state);
+}
+
 function toggleSound(): void {
   soundEnabled.value = !soundEnabled.value;
   if (!audio) return;
@@ -339,10 +468,13 @@ function resetGame(grade: GradeId): void {
   Object.assign(state, createKnowledgeGameState(grade, quizFilter));
   selectedTowerType.value = 'number';
   heardEffectIds.clear();
+  heardWave = 0;
+  savedResultStatus = '';
   lastFrame = 0;
 }
 
 onMounted(() => {
+  runHistory.value = loadRunHistory();
   audio = new KnowledgeDefenseAudio();
   audio.setEnabled(soundEnabled.value);
   if (battle3dHost.value) {
@@ -353,7 +485,9 @@ onMounted(() => {
     if (lastFrame === 0) lastFrame = time;
     tickGame(state, (time - lastFrame) / 1000);
     playNewAttackEffects(state.effects);
-    audio?.tick(state.status);
+    playWaveCue();
+    saveCompletedRunIfNeeded();
+    audio?.tick(state.status, state.pressure, state.combo);
     threeScene?.render(state, selectedTowerType.value);
     lastFrame = time;
     animationFrame = requestAnimationFrame(loop);
@@ -374,6 +508,44 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
     if (heardEffectIds.has(effect.id)) continue;
     heardEffectIds.add(effect.id);
     audio?.playShot(effect);
+  }
+}
+
+function playWaveCue(): void {
+  if (state.wave <= heardWave || state.status !== 'running') return;
+  heardWave = state.wave;
+  audio?.playWaveStart();
+}
+
+function saveCompletedRunIfNeeded(): void {
+  if ((state.status !== 'won' && state.status !== 'lost') || savedResultStatus === state.status) return;
+  savedResultStatus = state.status;
+  const summary: RunSummary = {
+    date: new Date().toISOString(),
+    grade: state.grade,
+    status: state.status,
+    score: state.score,
+    answered: totalAnswered.value,
+    correct: totalCorrect.value,
+    reviewed: totalReviewed.value,
+    hints: state.hintsUsed,
+  };
+  runHistory.value = [summary, ...runHistory.value].slice(0, 8);
+  try {
+    localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(runHistory.value));
+  } catch {
+    // Local storage can be disabled in private browsing; gameplay should continue.
+  }
+}
+
+function loadRunHistory(): RunSummary[] {
+  try {
+    const raw = localStorage.getItem(RUN_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, 8) : [];
+  } catch {
+    return [];
   }
 }
 </script>
@@ -535,7 +707,9 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 390px;
   gap: 16px;
-  min-height: calc(100vh - 36px);
+  height: calc(100vh - 36px);
+  min-height: 640px;
+  overflow: hidden;
 }
 
 .game-layout.with-setup {
@@ -552,9 +726,10 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
 .battle-card {
   padding: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
+  min-height: 0;
 }
 
 .top-hud,
@@ -579,6 +754,17 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
 .card-heading strong {
   display: block;
   font-size: 1.05rem;
+}
+
+.card-heading em {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .hud-metrics {
@@ -625,6 +811,10 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   color: #334155;
 }
 
+.compact-meter {
+  flex: 0.82;
+}
+
 .meter-track {
   height: 12px;
   border-radius: 999px;
@@ -641,6 +831,44 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
 
 .meter-track.wave i {
   background: linear-gradient(90deg, #3b82f6, #14b8a6);
+}
+
+.meter-track.mastery i {
+  background: linear-gradient(90deg, #f59e0b, #22c55e);
+}
+
+.meter-track.pressure i {
+  background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
+}
+
+.wave-intel {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.68);
+  color: #f8fafc;
+}
+
+.wave-intel span,
+.wave-intel strong {
+  font-weight: 900;
+}
+
+.wave-intel span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.78rem;
+}
+
+.wave-intel small {
+  color: #dbeafe;
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-align: right;
 }
 
 .battlefield {
@@ -679,6 +907,45 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   font-size: 0.78rem;
   font-weight: 900;
   pointer-events: none;
+}
+
+.event-stack {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 2;
+  display: grid;
+  gap: 8px;
+  width: min(330px, calc(100% - 28px));
+  pointer-events: none;
+}
+
+.event-toast {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.18);
+  line-height: 1.3;
+}
+
+.event-toast.good {
+  background: rgba(4, 120, 87, 0.82);
+}
+
+.event-toast.warn {
+  background: rgba(154, 52, 18, 0.82);
+}
+
+.event-toast strong {
+  font-size: 0.9rem;
+}
+
+.event-toast span {
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .field-feedback {
@@ -745,6 +1012,7 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   grid-template-rows: auto auto 1fr;
   gap: 12px;
   min-width: 0;
+  max-height: 100%;
   overflow: auto;
 }
 
@@ -768,6 +1036,44 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   font-size: 1.28rem;
   font-weight: 900;
   line-height: 1.45;
+}
+
+.hint-strip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  line-height: 1.35;
+}
+
+.hint-strip.open {
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.hint-strip button {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hint-strip button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.hint-strip span {
+  font-size: 0.88rem;
+  font-weight: 850;
 }
 
 .answer-grid {
@@ -870,6 +1176,41 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   font-weight: 800;
 }
 
+.tower-insight {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.tower-insight.boosted {
+  border-color: #22c55e;
+  background: #ecfdf5;
+}
+
+.tower-insight strong,
+.tower-insight em {
+  color: #0f766e;
+  font-weight: 900;
+}
+
+.tower-insight span,
+.tower-insight small {
+  font-weight: 800;
+}
+
+.tower-insight small {
+  color: #64748b;
+}
+
+.tower-insight em {
+  font-style: normal;
+}
+
 .pulse-button {
   width: 100%;
   text-align: center;
@@ -886,7 +1227,7 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
 
 .subject-row {
   display: grid;
-  grid-template-columns: 42px 1fr 48px;
+  grid-template-columns: 42px 1fr 52px;
   align-items: center;
   gap: 9px;
   font-weight: 900;
@@ -910,6 +1251,58 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   color: #334155;
 }
 
+.subject-row small {
+  grid-column: 2 / 4;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.boost-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.boost-row span {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 6px 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.mission-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.mission-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-weight: 900;
+}
+
+.mission-list div.done {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #047857;
+}
+
+.mission-list strong {
+  white-space: nowrap;
+}
+
 .commercial-note {
   display: grid;
   gap: 5px;
@@ -924,8 +1317,24 @@ function playNewAttackEffects(effects: ShotEffect[]): void {
   font-size: 0.92rem;
 }
 
+.history-note {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  line-height: 1.45;
+}
+
+.history-note strong {
+  color: #0f766e;
+}
+
 @media (max-width: 1100px) {
   .game-layout {
+    height: auto;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(520px, 58vh) auto;
     overflow: auto;

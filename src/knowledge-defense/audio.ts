@@ -14,6 +14,9 @@ export class KnowledgeDefenseAudio {
   private step = 0;
   private enabled = true;
   private lastStatus: GameStatus = 'ready';
+  private pressure = 0;
+  private combo = 0;
+  private musicIntervalMs = 260;
 
   get isEnabled(): boolean {
     return this.enabled;
@@ -40,7 +43,14 @@ export class KnowledgeDefenseAudio {
     }
   }
 
-  tick(status: GameStatus): void {
+  tick(status: GameStatus, pressure = 0, combo = 0): void {
+    this.pressure = pressure;
+    this.combo = combo;
+    this.updateMusicTempo();
+    if (this.context && this.musicGain) {
+      const target = status === 'running' ? 0.22 + Math.min(pressure, 100) / 520 : 0.16;
+      this.musicGain.gain.setTargetAtTime(target, this.context.currentTime, 0.12);
+    }
     if (status !== this.lastStatus) {
       if (status === 'won') this.playResult(true);
       if (status === 'lost') this.playResult(false);
@@ -78,6 +88,15 @@ export class KnowledgeDefenseAudio {
     this.tone(587.33, 0.18, 0.2, 'triangle', now + 0.08);
     this.tone(880, 0.2, 0.18, 'sine', now + 0.17);
     this.noiseBurst(now + 0.04, 0.22, '#pulse');
+  }
+
+  playWaveStart(): void {
+    const context = this.activeContext();
+    if (!context) return;
+    const now = context.currentTime;
+    this.tone(261.63, 0.09, 0.12, 'triangle', now);
+    this.tone(392, 0.1, 0.1, 'triangle', now + 0.08);
+    this.tone(523.25, 0.12, 0.1, 'sine', now + 0.16);
   }
 
   playShot(effect: ShotEffect): void {
@@ -126,7 +145,19 @@ export class KnowledgeDefenseAudio {
 
   private startMusicTimer(): void {
     if (this.musicTimer || !this.activeContext()) return;
-    this.musicTimer = setInterval(() => this.playMusicStep(), 260);
+    this.musicTimer = setInterval(() => this.playMusicStep(), this.musicIntervalMs);
+  }
+
+  private updateMusicTempo(): void {
+    if (!this.enabled || !this.context) return;
+    const nextInterval = Math.round(282 - Math.min(this.pressure, 100) * 0.72 - Math.min(this.combo, 10) * 3.2);
+    const clamped = Math.max(190, Math.min(282, nextInterval));
+    if (Math.abs(clamped - this.musicIntervalMs) < 14) return;
+    this.musicIntervalMs = clamped;
+    if (!this.musicTimer) return;
+    clearInterval(this.musicTimer);
+    this.musicTimer = null;
+    this.startMusicTimer();
   }
 
   private playMusicStep(): void {
@@ -141,6 +172,12 @@ export class KnowledgeDefenseAudio {
     }
     if (this.step % 8 === 6) {
       this.musicTone(melody * 1.5, 0.13, 0.045, 'triangle', now + 0.09);
+    }
+    if (this.combo >= 4 && this.step % 8 === 2) {
+      this.musicTone(melody * 2, 0.12, 0.035, 'sine', now + 0.05);
+    }
+    if (this.pressure >= 62 && this.step % 4 === 2) {
+      this.musicTone(bass * 1.5, 0.12, 0.035, 'triangle', now + 0.04);
     }
     this.step += 1;
   }
