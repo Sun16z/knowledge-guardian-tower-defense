@@ -15,6 +15,7 @@ import {
   type QuizQuestion,
   type SubjectId,
   type TowerSlot,
+  type TowerTargetMode,
   type TowerTypeId,
 } from './content';
 
@@ -38,6 +39,7 @@ export interface TowerState {
   level: number;
   cooldown: number;
   shots: number;
+  targetMode: TowerTargetMode;
 }
 
 export interface ShotEffect {
@@ -248,14 +250,14 @@ export function answerQuestion(state: KnowledgeGameState, selectedIndex: number)
   return result;
 }
 
-export function buildTower(state: KnowledgeGameState, slotId: string, typeId: TowerTypeId): boolean {
+export function buildTower(state: KnowledgeGameState, slotId: string, typeId: TowerTypeId, targetMode: TowerTargetMode = 'front'): boolean {
   const slot = getTowerSlot(slotId);
   const towerType = getTowerType(typeId);
   if (!slot || getTowerAtSlot(state, slotId) || state.energy < towerType.cost || state.status === 'lost') {
     return false;
   }
   state.energy -= towerType.cost;
-  state.towers.push({ slotId, typeId, level: 1, cooldown: 0.15, shots: 0 });
+  state.towers.push({ slotId, typeId, level: 1, cooldown: 0.15, shots: 0, targetMode });
   state.score += 30;
   return true;
 }
@@ -394,7 +396,7 @@ function updateTowers(state: KnowledgeGameState, dt: number): void {
     const slot = getTowerSlot(tower.slotId);
     if (!slot) continue;
 
-    const target = findTarget(state, slot, towerType.range);
+    const target = findTarget(state, slot, towerType.range, tower.targetMode);
     if (!target) continue;
 
     tower.cooldown = towerType.fireRate * Math.max(0.48, 1 - (tower.level - 1) * 0.1) * (boosted ? 0.86 : 1);
@@ -501,18 +503,27 @@ export function describeWavePreview(wave: number, grade: GradeId): string {
   return `預估出現：${names}`;
 }
 
-function findTarget(state: KnowledgeGameState, slot: Point, range: number): EnemyState | undefined {
+function findTarget(state: KnowledgeGameState, slot: Point, range: number, targetMode: TowerTargetMode): EnemyState | undefined {
   let selected: EnemyState | undefined;
-  let selectedProgress = -1;
+  let selectedScore = Number.NEGATIVE_INFINITY;
   const rangeSq = range * range;
   for (const enemy of state.enemies) {
     const point = pointAtProgress(enemy.progress);
-    if (distanceSq(slot, point) <= rangeSq && enemy.progress > selectedProgress) {
+    if (distanceSq(slot, point) > rangeSq) continue;
+    const score = targetScore(enemy, targetMode);
+    if (score > selectedScore) {
       selected = enemy;
-      selectedProgress = enemy.progress;
+      selectedScore = score;
     }
   }
   return selected;
+}
+
+function targetScore(enemy: EnemyState, targetMode: TowerTargetMode): number {
+  if (targetMode === 'fast') return enemy.speed + enemy.progress / 1000;
+  if (targetMode === 'weak') return -enemy.hp + enemy.progress / 1000;
+  if (targetMode === 'strong') return enemy.hp + enemy.maxHp * 0.25 + enemy.progress / 1000;
+  return enemy.progress;
 }
 
 function applySplashDamage(

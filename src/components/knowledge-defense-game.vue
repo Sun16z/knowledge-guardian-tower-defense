@@ -203,6 +203,21 @@
             <small>{{ selectedTower.upgradeHint }}</small>
             <em v-if="selectedTowerBoostSeconds > 0">共鳴中 {{ selectedTowerBoostSeconds }} 秒</em>
           </div>
+          <div class="target-mode-panel" aria-label="目標策略">
+            <strong>目標策略：{{ selectedTargetModeOption.label }}</strong>
+            <div class="target-mode-list">
+              <button
+                v-for="mode in targetModeOptions"
+                :key="mode.id"
+                type="button"
+                :class="{ active: selectedTargetMode === mode.id }"
+                @click="selectedTargetMode = mode.id"
+              >
+                {{ mode.shortLabel }}
+              </button>
+            </div>
+            <span>{{ selectedTargetModeOption.description }}</span>
+          </div>
           <button class="pulse-button" type="button" :disabled="!canPulse" @click="triggerFocusPulse">全域聚焦 88</button>
         </section>
 
@@ -254,6 +269,7 @@ import {
   QUESTION_BANK,
   SUBJECTS,
   SUBJECT_FILTER_OPTIONS,
+  TARGET_MODE_OPTIONS,
   TERM_OPTIONS,
   TOWER_TYPES,
   getTowerType,
@@ -264,6 +280,7 @@ import {
   type SubjectId,
   type SubjectFilter,
   type TermId,
+  type TowerTargetMode,
   type TowerTypeId,
 } from '../knowledge-defense/content';
 import {
@@ -298,12 +315,14 @@ const optionLabels = ['A', 'B', 'C', 'D'];
 const RUN_HISTORY_KEY = 'knowledge-defense-run-history-v1';
 const gradeConfigs = GRADE_CONFIGS;
 const towerTypes = TOWER_TYPES;
+const targetModeOptions = TARGET_MODE_OPTIONS;
 const termOptions = TERM_OPTIONS;
 const examOptions = EXAM_OPTIONS;
 const subjectFilterOptions = SUBJECT_FILTER_OPTIONS;
 const quizFilter = reactive<QuizFilter>({ ...DEFAULT_QUIZ_FILTER });
 const state = reactive(createKnowledgeGameState(1, quizFilter));
 const selectedTowerType = ref<TowerTypeId>('number');
+const selectedTargetMode = ref<TowerTargetMode>('front');
 const soundEnabled = ref(true);
 const battle3dHost = ref<HTMLElement | null>(null);
 const runHistory = ref<RunSummary[]>([]);
@@ -326,6 +345,9 @@ const statusLabel = computed(() => {
 const corePercent = computed(() => Math.round((state.coreHp / state.maxCoreHp) * 100));
 const wavePercent = computed(() => Math.min(100, Math.round((state.wave / state.targetWaves) * 100)));
 const selectedTower = computed(() => getTowerType(selectedTowerType.value));
+const selectedTargetModeOption = computed(
+  () => targetModeOptions.find((mode) => mode.id === selectedTargetMode.value) ?? targetModeOptions[0],
+);
 const canPulse = computed(() => state.energy >= 88 && state.status === 'running' && state.enemies.length > 0);
 const selectedTowerBoostSeconds = computed(() => Math.ceil(state.subjectBoosts[selectedTower.value.subject] ?? 0));
 const reviewCount = computed(() => state.reviewQuestionIds.length);
@@ -440,7 +462,7 @@ function onSlotClick(slotId: string): void {
     if (upgraded) audio?.playBuild(true);
     return;
   }
-  const built = buildTower(state, slotId, selectedTowerType.value);
+  const built = buildTower(state, slotId, selectedTowerType.value, selectedTargetMode.value);
   if (built) audio?.playBuild(false);
 }
 
@@ -467,6 +489,7 @@ function toggleSound(): void {
 function resetGame(grade: GradeId): void {
   Object.assign(state, createKnowledgeGameState(grade, quizFilter));
   selectedTowerType.value = 'number';
+  selectedTargetMode.value = 'front';
   heardEffectIds.clear();
   heardWave = 0;
   savedResultStatus = '';
@@ -1209,6 +1232,49 @@ function loadRunHistory(): RunSummary[] {
 
 .tower-insight em {
   font-style: normal;
+}
+
+.target-mode-panel {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  color: #134e4a;
+  line-height: 1.35;
+}
+
+.target-mode-panel strong,
+.target-mode-panel span {
+  font-weight: 900;
+}
+
+.target-mode-panel span {
+  color: #0f766e;
+  font-size: 0.82rem;
+}
+
+.target-mode-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.target-mode-list button {
+  min-height: 36px;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f766e;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.target-mode-list button.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
 }
 
 .pulse-button {

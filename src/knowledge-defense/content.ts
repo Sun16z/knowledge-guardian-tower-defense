@@ -8,6 +8,7 @@ export type QuestionDifficulty = '基礎' | '進階' | '挑戰';
 export type SubjectFilter = SubjectId | 'all';
 export type TowerTypeId = 'number' | 'word' | 'english' | 'nature' | 'map';
 export type EnemyTypeId = 'fog' | 'careless' | 'clock' | 'blank';
+export type TowerTargetMode = 'front' | 'fast' | 'weak' | 'strong';
 
 export interface GradeConfig {
   id: GradeId;
@@ -75,6 +76,13 @@ export interface TowerSlot {
   y: number;
 }
 
+export interface TargetModeOption {
+  id: TowerTargetMode;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
 export interface Point {
   x: number;
   y: number;
@@ -114,6 +122,13 @@ export const SUBJECT_FILTER_OPTIONS: Array<{ id: SubjectFilter; label: string }>
   { id: 'math', label: '數學' },
   { id: 'science', label: '自然' },
   { id: 'social', label: '社會' },
+];
+
+export const TARGET_MODE_OPTIONS: TargetModeOption[] = [
+  { id: 'front', label: '前線優先', shortLabel: '前線', description: '先打最接近核心的敵人，適合穩定防守。' },
+  { id: 'fast', label: '快速優先', shortLabel: '快速', description: '先打移動最快的敵人，適合防時間裂影。' },
+  { id: 'weak', label: '弱點優先', shortLabel: '弱點', description: '先補掉殘血敵人，適合避免漏怪。' },
+  { id: 'strong', label: '厚盾優先', shortLabel: '厚盾', description: '先削高血量敵人，適合後期壓力波。' },
 ];
 
 export const DEFAULT_QUIZ_FILTER: QuizFilter = {
