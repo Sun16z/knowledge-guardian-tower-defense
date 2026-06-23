@@ -78,6 +78,7 @@
           <div class="hud-metrics">
             <span>能量 {{ state.energy }}</span>
             <span>連擊 {{ state.combo }}</span>
+            <span>答題 {{ totalCorrect }} / {{ runCorrectGoal }}</span>
             <span>複習 {{ reviewCount }}</span>
             <span>波次 {{ state.wave }} / {{ state.targetWaves }}</span>
             <span>分數 {{ state.score }}</span>
@@ -225,6 +226,18 @@
           <div class="card-heading">
             <span>學習</span>
             <strong>本局掌握度</strong>
+          </div>
+          <div class="run-progress-card" aria-label="本局答題進度">
+            <div class="run-progress-heading">
+              <span>本局答題進度</span>
+              <strong>{{ totalCorrect }} / {{ runCorrectGoal }}</strong>
+            </div>
+            <div class="run-progress-track"><i :style="{ width: `${runCorrectPercent}%` }"></i></div>
+            <div class="run-progress-detail">
+              <span>還差 {{ remainingCorrect }} 題達成本局目標</span>
+              <strong>{{ totalAnswered === 0 ? '正確率 -' : `正確率 ${liveAccuracy}%` }}</strong>
+            </div>
+            <small>本次條件題庫已看過 {{ seenQuestionCount }} / {{ currentQuestionCount }} 題</small>
           </div>
           <div class="subject-bars">
             <div v-for="subject in subjectEntries" :key="subject.id" class="subject-row">
@@ -378,6 +391,10 @@ const totalCorrect = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduc
 const totalReviewed = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].reviewed, 0));
 const runCorrectGoal = computed(() => 18 + state.grade * 2);
 const reviewGoal = computed(() => Math.max(3, Math.floor(runCorrectGoal.value / 7)));
+const runCorrectPercent = computed(() => Math.min(100, Math.round((totalCorrect.value / runCorrectGoal.value) * 100)));
+const remainingCorrect = computed(() => Math.max(0, runCorrectGoal.value - totalCorrect.value));
+const liveAccuracy = computed(() => (totalAnswered.value === 0 ? 0 : Math.round((totalCorrect.value / totalAnswered.value) * 100)));
+const seenQuestionCount = computed(() => Math.min(totalAnswered.value, currentQuestionCount.value));
 const missionEntries = computed(() => [
   { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
   { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
@@ -1291,6 +1308,61 @@ function loadRunHistory(): RunSummary[] {
 .subject-bars {
   display: grid;
   gap: 10px;
+}
+
+.run-progress-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.run-progress-heading,
+.run-progress-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.run-progress-heading span,
+.run-progress-detail span,
+.run-progress-card small {
+  min-width: 0;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.run-progress-heading strong {
+  color: #1d4ed8;
+  font-size: 1.08rem;
+  white-space: nowrap;
+}
+
+.run-progress-detail strong {
+  color: #0f766e;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.run-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #bfdbfe;
+}
+
+.run-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #0f766e);
 }
 
 .subject-row {
