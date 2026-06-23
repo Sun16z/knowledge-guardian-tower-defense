@@ -474,6 +474,7 @@ import {
   prioritizeReviewQuestion,
   startGame,
   tickGame,
+  triggerRepairSurge,
   upgradeTower,
   useFocusPulse,
   useQuestionHint,
@@ -1093,7 +1094,9 @@ function chooseAnswer(index: number): void {
     const repaired = recordHighConfidenceRepair(answeredQuestion);
     if (repaired) {
       repairStreak.value += 1;
-      priorityReviewNotice.value = `迷思修正完成，週報卡已更新修正率。修正連擊 ${repairStreak.value}/${repairStreakGoal.value}。`;
+      triggerRepairSurge(state, repairStreak.value);
+      audio?.playFocusPulse();
+      priorityReviewNotice.value = `迷思修正完成，修正光波已釋放。修正連擊 ${repairStreak.value}/${repairStreakGoal.value}。`;
     }
   } else if (confidence === 'sure') {
     prioritizeReviewQuestion(state, answeredQuestion, 0);
@@ -1343,6 +1346,8 @@ function shouldUsePerformanceMode(): boolean {
 <style scoped>
 .knowledge-defense-shell {
   min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at 12% 12%, rgba(250, 204, 21, 0.22), transparent 28%),
     radial-gradient(circle at 86% 18%, rgba(20, 184, 166, 0.22), transparent 26%),
@@ -1350,7 +1355,12 @@ function shouldUsePerformanceMode(): boolean {
   color: #0f172a;
   display: grid;
   place-items: stretch;
-  padding: 18px;
+  --shell-pad: 18px;
+  padding: var(--shell-pad);
+  padding-top: max(var(--shell-pad), env(safe-area-inset-top));
+  padding-right: max(var(--shell-pad), env(safe-area-inset-right));
+  padding-bottom: calc(var(--shell-pad) + env(safe-area-inset-bottom));
+  padding-left: max(var(--shell-pad), env(safe-area-inset-left));
 }
 
 .setup-screen {
@@ -1770,6 +1780,7 @@ function shouldUsePerformanceMode(): boolean {
   grid-template-columns: minmax(0, 1fr) 390px;
   gap: 16px;
   height: calc(100vh - 36px);
+  height: calc(100dvh - 36px);
   min-height: 640px;
   overflow: hidden;
 }
@@ -2997,7 +3008,9 @@ function shouldUsePerformanceMode(): boolean {
     height: auto;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(520px, 58vh) auto;
-    overflow: auto;
+    grid-template-rows: minmax(520px, 58svh) auto;
+    grid-template-rows: minmax(520px, 58dvh) auto;
+    overflow: visible;
   }
 
   .control-panel {
@@ -3012,13 +3025,21 @@ function shouldUsePerformanceMode(): boolean {
 
 @media (max-width: 760px) {
   .knowledge-defense-shell {
-    padding: 10px;
+    --shell-pad: 10px;
+    align-content: start;
   }
 
   .setup-screen {
     inset: 10px;
+    inset:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
     padding: 18px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
     overflow: auto;
+    overscroll-behavior-y: contain;
   }
 
   .grade-picker,
@@ -3040,11 +3061,14 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .game-layout {
-    min-height: calc(100vh - 20px);
-    grid-template-rows: minmax(600px, 70vh) auto;
+    min-height: auto;
+    grid-template-rows: auto auto;
+    gap: 12px;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .battle-card {
+    grid-template-rows: auto auto auto auto;
     padding: 0;
   }
 
@@ -3058,7 +3082,81 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .battle-canvas {
-    min-height: 420px;
+    height: clamp(320px, 48svh, 420px);
+    height: clamp(320px, 48dvh, 420px);
+    min-height: 0;
+  }
+
+  .control-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .control-panel > section {
+    padding: 12px;
+  }
+
+  .quiz-card,
+  .tower-card,
+  .progress-card {
+    gap: 10px;
+  }
+
+  .progress-card {
+    grid-column: auto;
+  }
+
+  .badge-token small,
+  .ability-lens-row small,
+  .subject-row small {
+    display: none;
+  }
+
+  .ability-lens {
+    gap: 6px;
+    padding: 9px;
+  }
+
+  .ability-lens-row {
+    grid-template-columns: 62px 1fr 42px;
+    gap: 6px;
+    padding: 6px 7px;
+  }
+
+  .subject-bars {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .subject-row {
+    grid-template-columns: 34px 1fr 38px;
+    gap: 6px;
+    padding: 7px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .subject-row span,
+  .subject-row strong {
+    min-width: 0;
+    font-size: 0.76rem;
+  }
+
+  .mission-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mission-list div {
+    display: grid;
+    justify-items: start;
+    gap: 3px;
+  }
+
+  .commercial-note,
+  .misconception-note,
+  .history-note {
+    padding: 10px;
   }
 
   .scene-chip {

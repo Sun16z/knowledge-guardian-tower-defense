@@ -317,6 +317,39 @@ export function useFocusPulse(state: KnowledgeGameState): boolean {
   return true;
 }
 
+export function triggerRepairSurge(state: KnowledgeGameState, streak = 1): void {
+  const damage = 28 + state.grade * 5 + Math.min(streak, 3) * 10;
+  for (const enemy of state.enemies) {
+    enemy.hp -= damage;
+    enemy.slowTimer = Math.max(enemy.slowTimer, 1.1 + Math.min(streak, 3) * 0.22);
+  }
+
+  const color = streak >= 2 ? '#f472b6' : '#38bdf8';
+  state.effects.push({
+    id: state.nextEffectId++,
+    from: { x: 930, y: 354 },
+    to: { x: 930, y: 354 },
+    color,
+    ttl: 0.72,
+    kind: 'splash',
+  });
+
+  for (const enemy of state.enemies.slice(0, 3)) {
+    const point = pointAtProgress(enemy.progress);
+    state.effects.push({
+      id: state.nextEffectId++,
+      from: point,
+      to: point,
+      color,
+      ttl: 0.46,
+      kind: 'splash',
+    });
+  }
+
+  pushLearningEvent(state, 'good', '修正光波', `迷思修正釋放光波，敵群受創並緩速。連擊 ${streak}。`);
+  collectDefeatedEnemies(state);
+}
+
 export function useQuestionHint(state: KnowledgeGameState): boolean {
   const cost = 5;
   const questionId = state.currentQuestion.id;

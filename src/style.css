@@ -3,18 +3,31 @@ body,
 #app {
   margin: 0;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
+  min-height: 100%;
 }
 
 body {
   font-family: system-ui, 'Segoe UI', sans-serif;
   background: #0b1020;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: none;
+  touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+button,
+canvas {
+  touch-action: manipulation;
 }
 
 * {
