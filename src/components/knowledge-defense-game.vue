@@ -239,6 +239,18 @@
             </div>
             <small>本次條件題庫已看過 {{ seenQuestionCount }} / {{ currentQuestionCount }} 題</small>
           </div>
+          <div class="weakness-card" :class="{ clear: !weaknessHasTarget }" aria-label="弱點回補">
+            <div class="weakness-heading">
+              <span>弱點回補</span>
+              <strong :style="{ color: weaknessColor }">{{ weaknessLabel }}</strong>
+            </div>
+            <div class="weakness-track"><i :style="{ width: `${weaknessRepairPercent}%`, background: weaknessColor }"></i></div>
+            <div class="weakness-detail">
+              <span>{{ weaknessHasTarget ? `回補 ${weaknessRepaired} / ${weaknessRepairGoal}` : '無待修復錯題' }}</span>
+              <strong>{{ weaknessHasTarget ? `${weaknessOpenCount} 題待修復` : '穩定' }}</strong>
+            </div>
+            <small>{{ weaknessGuideText }}</small>
+          </div>
           <div class="subject-bars">
             <div v-for="subject in subjectEntries" :key="subject.id" class="subject-row">
               <span>{{ subject.label }}</span>
@@ -395,6 +407,30 @@ const runCorrectPercent = computed(() => Math.min(100, Math.round((totalCorrect.
 const remainingCorrect = computed(() => Math.max(0, runCorrectGoal.value - totalCorrect.value));
 const liveAccuracy = computed(() => (totalAnswered.value === 0 ? 0 : Math.round((totalCorrect.value / totalAnswered.value) * 100)));
 const seenQuestionCount = computed(() => Math.min(totalAnswered.value, currentQuestionCount.value));
+const weaknessEntry = computed(() => {
+  const ranked = subjectEntries.value
+    .filter((subject) => subject.mistakes > 0)
+    .map((subject) => ({
+      ...subject,
+      openMistakes: Math.max(0, subject.mistakes - subject.reviewed),
+    }))
+    .sort((a, b) => b.openMistakes - a.openMistakes || b.mistakes - a.mistakes || a.accuracy - b.accuracy);
+  return ranked[0];
+});
+const weaknessHasTarget = computed(() => Boolean(weaknessEntry.value));
+const weaknessLabel = computed(() => weaknessEntry.value?.label ?? '目前穩定');
+const weaknessColor = computed(() => weaknessEntry.value?.color ?? '#0f766e');
+const weaknessOpenCount = computed(() => weaknessEntry.value?.openMistakes ?? 0);
+const weaknessRepairGoal = computed(() => (weaknessEntry.value ? Math.max(1, Math.ceil(weaknessEntry.value.mistakes * 0.6)) : 1));
+const weaknessRepaired = computed(() => Math.min(weaknessEntry.value?.reviewed ?? 0, weaknessRepairGoal.value));
+const weaknessRepairPercent = computed(() => Math.min(100, Math.round((weaknessRepaired.value / weaknessRepairGoal.value) * 100)));
+const weaknessGuideText = computed(() => {
+  if (!weaknessEntry.value) return '目前沒有錯題，保持答題節奏。';
+  if (weaknessOpenCount.value > 0) {
+    return `${weaknessEntry.value.label}還有 ${weaknessOpenCount.value} 題待修復，遇到錯題複習標籤時先穩住。`;
+  }
+  return `${weaknessEntry.value.label}錯題已修復，下一步維持正確率。`;
+});
 const missionEntries = computed(() => [
   { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
   { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
@@ -1363,6 +1399,73 @@ function loadRunHistory(): RunSummary[] {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #2563eb, #0f766e);
+}
+
+.weakness-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.weakness-card.clear {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #14532d;
+}
+
+.weakness-heading,
+.weakness-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.weakness-heading span,
+.weakness-detail span,
+.weakness-card small {
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.weakness-heading strong {
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.weakness-detail strong {
+  color: #9a3412;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.weakness-card.clear .weakness-detail strong {
+  color: #15803d;
+}
+
+.weakness-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ffedd5;
+}
+
+.weakness-card.clear .weakness-track {
+  background: #dcfce7;
+}
+
+.weakness-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
 }
 
 .subject-row {
