@@ -2,7 +2,7 @@
   <main class="knowledge-defense-shell">
     <section v-if="state.status === 'ready'" class="setup-screen">
       <div class="setup-copy">
-        <p class="kicker">小二到小六問答塔防</p>
+        <p class="kicker">小一到小六問答塔防</p>
         <h1>知識守護隊</h1>
         <p class="setup-text">
           答題取得能量，建造原創知識塔，守住右側的知識核心。現在題庫涵蓋小一到小六、上下學期、期中期末與五科。
