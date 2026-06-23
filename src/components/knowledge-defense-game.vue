@@ -64,6 +64,13 @@
       </div>
 
       <p class="bank-count">本次條件 {{ currentQuestionCount }} 題 / 題庫總量 {{ totalQuestionCount }} 題</p>
+      <div class="bank-breakdown" aria-label="各科題庫分布">
+        <span v-for="subject in setupSubjectCounts" :key="subject.id" :class="{ active: quizFilter.subject === 'all' || quizFilter.subject === subject.id }">
+          <i :style="{ background: subject.color }"></i>
+          <strong>{{ subject.label }}</strong>
+          <em>{{ subject.count }} 題</em>
+        </span>
+      </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
     </section>
@@ -452,6 +459,18 @@ const currentQuestionMeta = computed(() => {
 });
 const currentQuestionCount = computed(() => questionsForSelection(state.grade, quizFilter).length);
 const totalQuestionCount = computed(() => QUESTION_BANK.length);
+const setupSubjectCounts = computed(() =>
+  (Object.keys(SUBJECTS) as SubjectId[]).map((id) => ({
+    id,
+    label: SUBJECTS[id].label,
+    color: SUBJECTS[id].color,
+    count: questionsForSelection(state.grade, {
+      term: quizFilter.term,
+      exam: quizFilter.exam,
+      subject: id,
+    }).length,
+  })),
+);
 
 const subjectEntries = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[]).map((id) => ({
@@ -763,6 +782,55 @@ function loadRunHistory(): RunSummary[] {
 .bank-count {
   margin: -8px 0 0;
   font-size: 0.95rem;
+}
+
+.bank-breakdown {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  gap: 8px;
+  width: min(760px, 100%);
+  margin-top: -12px;
+}
+
+.bank-breakdown span {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(219, 234, 254, 0.2);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.42);
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 900;
+  opacity: 0.74;
+}
+
+.bank-breakdown span.active {
+  border-color: rgba(190, 242, 100, 0.48);
+  background: rgba(22, 101, 52, 0.46);
+  color: #f8fafc;
+  opacity: 1;
+}
+
+.bank-breakdown i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.bank-breakdown strong,
+.bank-breakdown em {
+  min-width: 0;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.bank-breakdown strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .primary-action,
@@ -1613,6 +1681,12 @@ function loadRunHistory(): RunSummary[] {
 
   .setup-control {
     justify-content: start;
+  }
+
+  .bank-breakdown {
+    grid-template-columns: 1fr;
+    width: 100%;
+    margin-top: -4px;
   }
 
   .game-layout {
