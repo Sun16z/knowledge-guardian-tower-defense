@@ -587,6 +587,17 @@ function addReviewQuestion(state: KnowledgeGameState, question: QuizQuestion): v
   state.questionDeck.splice(retryIndex, 0, question);
 }
 
+export function prioritizeReviewQuestion(state: KnowledgeGameState, question: QuizQuestion, retryOffset = 0): void {
+  if (!state.reviewQuestionIds.includes(question.id)) {
+    state.reviewQuestionIds.push(question.id);
+  }
+  const cursor = Math.min(state.questionCursor, state.questionDeck.length);
+  state.questionDeck = state.questionDeck.filter((deckQuestion, index) => index < cursor || deckQuestion.id !== question.id);
+  const retryIndex = Math.min(cursor + Math.max(0, retryOffset), state.questionDeck.length);
+  state.questionDeck.splice(retryIndex, 0, question);
+  state.currentQuestion = state.questionDeck[state.questionCursor] ?? question;
+}
+
 function pushLearningEvent(state: KnowledgeGameState, tone: LearningEvent['tone'], title: string, detail: string): void {
   state.learningEvents.unshift({
     id: state.nextLearningEventId++,

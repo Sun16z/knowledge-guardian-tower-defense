@@ -238,6 +238,7 @@
             <span v-if="!state.lastAnswer.correct">正確答案：{{ state.lastAnswer.correctAnswer }}</span>
             <span>解題：{{ state.lastAnswer.explanation }}</span>
             <span>提示：{{ state.lastAnswer.hint }}</span>
+            <span v-if="priorityReviewNotice">{{ priorityReviewNotice }}</span>
           </div>
         </section>
 
@@ -437,6 +438,7 @@ import {
   buildTower,
   createKnowledgeGameState,
   getTowerAtSlot,
+  prioritizeReviewQuestion,
   startGame,
   tickGame,
   upgradeTower,
@@ -515,6 +517,7 @@ const selectedTargetMode = ref<TowerTargetMode>('front');
 const soundEnabled = ref(true);
 const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
 const selectedConfidence = ref<ConfidenceLevel | null>(null);
+const priorityReviewNotice = ref('');
 const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
   sure: { total: 0, correct: 0 },
   maybe: { total: 0, correct: 0 },
@@ -920,13 +923,19 @@ function startRun(): void {
 function chooseAnswer(index: number): void {
   void audio?.ensureStarted();
   if (!selectedConfidence.value) return;
+  priorityReviewNotice.value = '';
   if (state.status === 'ready') {
     startGame(state);
   }
   if (state.status !== 'running') return;
   const confidence = selectedConfidence.value;
+  const answeredQuestion = state.currentQuestion;
   const result = answerQuestion(state, index);
   recordConfidenceAnswer(confidence, result.correct);
+  if (!result.correct && confidence === 'sure') {
+    prioritizeReviewQuestion(state, answeredQuestion, 0);
+    priorityReviewNotice.value = '高把握錯題已列為立即複習，下一題先修正這個觀念。';
+  }
   selectedConfidence.value = null;
   audio?.playAnswer(result.correct);
 }
@@ -975,6 +984,7 @@ function resetGame(grade: GradeId): void {
   selectedTowerType.value = 'number';
   selectedTargetMode.value = 'front';
   selectedConfidence.value = null;
+  priorityReviewNotice.value = '';
   resetConfidenceStats();
   heardEffectIds.clear();
   heardWave = 0;
