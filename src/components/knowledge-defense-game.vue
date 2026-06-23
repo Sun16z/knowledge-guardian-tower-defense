@@ -196,7 +196,7 @@
       </div>
 
       <aside class="control-panel" aria-label="問答與建塔面板">
-        <section class="quiz-card">
+        <section ref="quizCardRef" class="quiz-card">
           <div class="card-heading">
             <span :style="{ background: currentSubject.color }">{{ currentSubject.label }}</span>
             <strong>{{ currentQuestionMeta }} / 第 {{ state.questionCursor + 1 }} 題</strong>
@@ -256,7 +256,7 @@
           </div>
         </section>
 
-        <section class="tower-card">
+        <section ref="towerCardRef" class="tower-card">
           <div class="card-heading">
             <span>建塔</span>
             <strong>{{ selectedTower.name }}</strong>
@@ -301,7 +301,7 @@
           <button class="pulse-button" type="button" :disabled="!canPulse" @click="triggerFocusPulse">全域聚焦 88</button>
         </section>
 
-        <section class="progress-card">
+        <section ref="progressCardRef" class="progress-card">
           <div class="card-heading">
             <span>學習</span>
             <strong>本局掌握度</strong>
@@ -434,6 +434,21 @@
           </div>
         </section>
       </aside>
+
+      <nav v-if="state.status !== 'ready'" class="mobile-action-rail" aria-label="手機快捷導覽">
+        <button type="button" @click="scrollToMobilePanel('quiz')">
+          <span>答題</span>
+          <strong>{{ totalCorrect }}/{{ runCorrectGoal }}</strong>
+        </button>
+        <button type="button" @click="scrollToMobilePanel('tower')">
+          <span>建塔</span>
+          <strong>{{ state.energy }}</strong>
+        </button>
+        <button type="button" @click="scrollToMobilePanel('progress')">
+          <span>學習</span>
+          <strong>{{ liveAccuracyText }}</strong>
+        </button>
+      </nav>
     </section>
   </main>
 </template>
@@ -585,6 +600,9 @@ const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
   try: { total: 0, correct: 0 },
 });
 const battle3dHost = ref<HTMLElement | null>(null);
+const quizCardRef = ref<HTMLElement | null>(null);
+const towerCardRef = ref<HTMLElement | null>(null);
+const progressCardRef = ref<HTMLElement | null>(null);
 const runHistory = ref<RunSummary[]>([]);
 let threeScene: KnowledgeDefenseThreeScene | null = null;
 let audio: KnowledgeDefenseAudio | null = null;
@@ -666,6 +684,7 @@ const reviewGoal = computed(() => Math.max(3, Math.floor(runCorrectGoal.value / 
 const runCorrectPercent = computed(() => Math.min(100, Math.round((totalCorrect.value / runCorrectGoal.value) * 100)));
 const remainingCorrect = computed(() => Math.max(0, runCorrectGoal.value - totalCorrect.value));
 const liveAccuracy = computed(() => (totalAnswered.value === 0 ? 0 : Math.round((totalCorrect.value / totalAnswered.value) * 100)));
+const liveAccuracyText = computed(() => (totalAnswered.value === 0 ? '-' : `${liveAccuracy.value}%`));
 const seenQuestionCount = computed(() => Math.min(totalAnswered.value, currentQuestionCount.value));
 const reviewBadgeGoal = computed(() => Math.max(1, Math.ceil(reviewGoal.value / 2)));
 const weaknessEntry = computed(() => {
@@ -1078,6 +1097,12 @@ function startRun(): void {
   startGame(state);
 }
 
+function scrollToMobilePanel(panel: 'quiz' | 'tower' | 'progress'): void {
+  const target =
+    panel === 'quiz' ? quizCardRef.value : panel === 'tower' ? towerCardRef.value : progressCardRef.value;
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function chooseAnswer(index: number): void {
   void audio?.ensureStarted();
   if (!selectedConfidence.value) return;
@@ -1379,6 +1404,8 @@ function shouldUsePerformanceMode(): boolean {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 22px;
   backdrop-filter: blur(14px);
+  overflow: auto;
+  overscroll-behavior-y: contain;
 }
 
 .setup-copy {
@@ -2149,6 +2176,10 @@ function shouldUsePerformanceMode(): boolean {
   min-width: 0;
   max-height: 100%;
   overflow: auto;
+}
+
+.mobile-action-rail {
+  display: none;
 }
 
 .control-panel > section {
@@ -3023,6 +3054,12 @@ function shouldUsePerformanceMode(): boolean {
   }
 }
 
+@media (max-height: 860px) {
+  .setup-screen {
+    align-content: start;
+  }
+}
+
 @media (max-width: 760px) {
   .knowledge-defense-shell {
     --shell-pad: 10px;
@@ -3038,8 +3075,6 @@ function shouldUsePerformanceMode(): boolean {
       max(10px, env(safe-area-inset-left));
     padding: 18px;
     padding-bottom: calc(18px + env(safe-area-inset-bottom));
-    overflow: auto;
-    overscroll-behavior-y: contain;
   }
 
   .grade-picker,
@@ -3064,7 +3099,7 @@ function shouldUsePerformanceMode(): boolean {
     min-height: auto;
     grid-template-rows: auto auto;
     gap: 12px;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
   }
 
   .battle-card {
@@ -3100,6 +3135,7 @@ function shouldUsePerformanceMode(): boolean {
   .tower-card,
   .progress-card {
     gap: 10px;
+    scroll-margin-block-start: 12px;
   }
 
   .progress-card {
@@ -3157,6 +3193,59 @@ function shouldUsePerformanceMode(): boolean {
   .misconception-note,
   .history-note {
     padding: 10px;
+  }
+
+  .mobile-action-rail {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 12;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.86);
+    box-shadow: 0 18px 38px rgba(2, 6, 23, 0.32);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-action-rail button {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 54px;
+    padding: 7px 6px;
+    border: 1px solid rgba(219, 234, 254, 0.22);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #f8fafc;
+    cursor: pointer;
+  }
+
+  .mobile-action-rail button:active {
+    transform: translateY(1px);
+  }
+
+  .mobile-action-rail span,
+  .mobile-action-rail strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-action-rail span {
+    color: #bfdbfe;
+    font-size: 0.72rem;
+    font-weight: 900;
+  }
+
+  .mobile-action-rail strong {
+    font-size: 0.95rem;
+    font-weight: 950;
   }
 
   .scene-chip {
