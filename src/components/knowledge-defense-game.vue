@@ -109,6 +109,9 @@
             <button class="sound-button" type="button" :aria-pressed="soundEnabled" @click="toggleSound">
               {{ soundEnabled ? '音樂開' : '音樂關' }}
             </button>
+            <button class="graphics-button" type="button" :aria-pressed="graphicsPerformanceMode" @click="cycleGraphicsMode">
+              3D {{ graphicsModeLabel }}
+            </button>
           </div>
         </header>
 
@@ -139,7 +142,7 @@
 
         <div class="battlefield" aria-label="知識塔防 3D 戰場">
           <div ref="battle3dHost" class="battle-canvas" role="img" aria-label="原創低多邊形 3D 知識塔防戰場">
-            <span class="scene-chip">原創 3D 幾何戰場</span>
+            <span class="scene-chip">原創 3D 幾何戰場 / {{ graphicsStatusLabel }}</span>
             <div v-if="state.learningEvents.length > 0" class="event-stack" aria-live="polite">
               <div
                 v-for="event in state.learningEvents"
@@ -452,6 +455,7 @@ const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({
 
 const optionLabels = ['A', 'B', 'C', 'D'];
 const RUN_HISTORY_KEY = 'knowledge-defense-run-history-v1';
+const GRAPHICS_MODE_KEY = 'knowledge-defense-graphics-mode-v1';
 const gradeConfigs = GRADE_CONFIGS;
 const towerTypes = TOWER_TYPES;
 const targetModeOptions = TARGET_MODE_OPTIONS;
@@ -463,6 +467,7 @@ const state = reactive(createKnowledgeGameState(1, quizFilter));
 const selectedTowerType = ref<TowerTypeId>('number');
 const selectedTargetMode = ref<TowerTargetMode>('front');
 const soundEnabled = ref(true);
+const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
 const battle3dHost = ref<HTMLElement | null>(null);
 const runHistory = ref<RunSummary[]>([]);
 let threeScene: KnowledgeDefenseThreeScene | null = null;
@@ -472,6 +477,8 @@ let animationFrame = 0;
 let lastFrame = 0;
 let heardWave = 0;
 let savedResultStatus: 'won' | 'lost' | '' = '';
+
+type GraphicsMode = 'auto' | 'performance' | 'quality';
 
 const statusLabel = computed(() => {
   if (state.status === 'ready') return '部署階段';
@@ -488,6 +495,13 @@ const selectedTargetModeOption = computed(
   () => targetModeOptions.find((mode) => mode.id === selectedTargetMode.value) ?? targetModeOptions[0],
 );
 const canPulse = computed(() => state.energy >= 88 && state.status === 'running' && state.enemies.length > 0);
+const graphicsPerformanceMode = computed(() => graphicsMode.value === 'performance' || (graphicsMode.value === 'auto' && shouldUsePerformanceMode()));
+const graphicsModeLabel = computed(() => {
+  if (graphicsMode.value === 'performance') return '省電';
+  if (graphicsMode.value === 'quality') return '畫質';
+  return '自動';
+});
+const graphicsStatusLabel = computed(() => (graphicsPerformanceMode.value ? '省電渲染' : '標準渲染'));
 const selectedTowerBoostSeconds = computed(() => Math.ceil(state.subjectBoosts[selectedTower.value.subject] ?? 0));
 const reviewCount = computed(() => state.reviewQuestionIds.length);
 const currentQuestionIsReview = computed(() => state.reviewQuestionIds.includes(state.currentQuestion.id));
@@ -866,6 +880,12 @@ function toggleSound(): void {
   }
 }
 
+function cycleGraphicsMode(): void {
+  graphicsMode.value = graphicsMode.value === 'auto' ? 'performance' : graphicsMode.value === 'performance' ? 'quality' : 'auto';
+  saveGraphicsMode(graphicsMode.value);
+  rebuildThreeScene();
+}
+
 function resetGame(grade: GradeId): void {
   Object.assign(state, createKnowledgeGameState(grade, quizFilter));
   applyRetryMissionQuestionFocus();
@@ -892,14 +912,20 @@ function applyRetryMissionQuestionFocus(): void {
   state.currentQuestion = state.questionDeck[0];
 }
 
+function rebuildThreeScene(): void {
+  if (!battle3dHost.value) return;
+  threeScene?.dispose();
+  threeScene = new KnowledgeDefenseThreeScene(battle3dHost.value, onSlotClick, {
+    performanceMode: graphicsPerformanceMode.value,
+  });
+}
+
 onMounted(() => {
   runHistory.value = loadRunHistory();
   applyRetryMissionQuestionFocus();
   audio = new KnowledgeDefenseAudio();
   audio.setEnabled(soundEnabled.value);
-  if (battle3dHost.value) {
-    threeScene = new KnowledgeDefenseThreeScene(battle3dHost.value, onSlotClick);
-  }
+  rebuildThreeScene();
 
   const loop = (time: number) => {
     if (lastFrame === 0) lastFrame = time;
@@ -971,6 +997,34 @@ function loadRunHistory(): RunSummary[] {
   } catch {
     return [];
   }
+}
+
+function loadGraphicsMode(): GraphicsMode {
+  try {
+    const saved = localStorage.getItem(GRAPHICS_MODE_KEY);
+    if (saved === 'auto' || saved === 'performance' || saved === 'quality') return saved;
+  } catch {
+    // Storage can be disabled; default automatic graphics mode still works.
+  }
+  return 'auto';
+}
+
+function saveGraphicsMode(mode: GraphicsMode): void {
+  try {
+    localStorage.setItem(GRAPHICS_MODE_KEY, mode);
+  } catch {
+    // Gameplay should continue even when storage is unavailable.
+  }
+}
+
+function shouldUsePerformanceMode(): boolean {
+  const navigatorHints = navigator as Navigator & { deviceMemory?: number };
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const lowMemory = (navigatorHints.deviceMemory ?? 8) <= 4;
+  const lowCores = (navigator.hardwareConcurrency ?? 8) <= 4;
+  const highDprMobile = coarsePointer && window.innerWidth <= 720 && (window.devicePixelRatio || 1) > 1.4;
+  return reducedMotion || lowMemory || lowCores || highDprMobile;
 }
 </script>
 
@@ -1381,7 +1435,8 @@ function loadRunHistory(): RunSummary[] {
 
 .hud-metrics span,
 .card-heading span,
-.sound-button {
+.sound-button,
+.graphics-button {
   border-radius: 999px;
   background: #e2e8f0;
   color: #0f172a;
@@ -1390,16 +1445,23 @@ function loadRunHistory(): RunSummary[] {
   font-size: 0.82rem;
 }
 
-.sound-button {
+.sound-button,
+.graphics-button {
   border: 1px solid rgba(15, 23, 42, 0.12);
   background: #ecfeff;
   color: #0f766e;
   cursor: pointer;
 }
 
-.sound-button[aria-pressed='false'] {
+.sound-button[aria-pressed='false'],
+.graphics-button[aria-pressed='false'] {
   background: #f1f5f9;
   color: #64748b;
+}
+
+.graphics-button[aria-pressed='true'] {
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .meter-row {

@@ -8,6 +8,10 @@ const WORLD_SCALE = 60;
 const FIELD_WIDTH = 980;
 const FIELD_HEIGHT = 600;
 
+export interface KnowledgeDefenseThreeSceneOptions {
+  performanceMode?: boolean;
+}
+
 interface EnemyRender {
   group: THREE.Group;
   hpFill: THREE.Mesh;
@@ -44,18 +48,19 @@ export class KnowledgeDefenseThreeScene {
   private width = 0;
   private height = 0;
   private disposed = false;
+  private performanceMode: boolean;
 
-  constructor(host: HTMLElement, onSlotClick: SlotClickHandler) {
+  constructor(host: HTMLElement, onSlotClick: SlotClickHandler, options: KnowledgeDefenseThreeSceneOptions = {}) {
     this.host = host;
     this.onSlotClick = onSlotClick;
+    this.performanceMode = options.performanceMode ?? false;
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !this.performanceMode,
       alpha: false,
-      powerPreference: 'high-performance',
-      preserveDrawingBuffer: true,
+      powerPreference: this.performanceMode ? 'low-power' : 'high-performance',
+      preserveDrawingBuffer: !this.performanceMode,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = true;
+    this.applyRendererQuality();
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.domElement.className = 'battle-three-canvas';
@@ -65,6 +70,15 @@ export class KnowledgeDefenseThreeScene {
     this.setupLights();
     this.setupWorld();
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
+  }
+
+  setPerformanceMode(enabled: boolean): void {
+    if (this.performanceMode === enabled) return;
+    this.performanceMode = enabled;
+    this.applyRendererQuality();
+    if (this.width > 0 && this.height > 0) {
+      this.renderer.setSize(this.width, this.height, false);
+    }
   }
 
   render(state: KnowledgeGameState, selectedTowerType: string): void {
@@ -108,15 +122,15 @@ export class KnowledgeDefenseThreeScene {
 
   private setupLights(): void {
     this.scene.background = new THREE.Color('#bfe3ff');
-    this.scene.fog = new THREE.Fog('#bfe3ff', 15, 34);
+    this.scene.fog = this.performanceMode ? null : new THREE.Fog('#bfe3ff', 15, 34);
 
     const hemi = new THREE.HemisphereLight('#f8fafc', '#4d7c0f', 2.1);
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight('#fff7ed', 3.2);
+    const sun = new THREE.DirectionalLight('#fff7ed', this.performanceMode ? 2.6 : 3.2);
     sun.position.set(-6, 10, 7);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.castShadow = !this.performanceMode;
+    sun.shadow.mapSize.set(this.performanceMode ? 512 : 1024, this.performanceMode ? 512 : 1024);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 30;
     sun.shadow.camera.left = -12;
@@ -213,6 +227,7 @@ export class KnowledgeDefenseThreeScene {
     ];
 
     positions.forEach(([x, z], index) => {
+      if (this.performanceMode && index % 2 === 1) return;
       const trunk = new THREE.Mesh(
         new THREE.CylinderGeometry(0.08, 0.11, 0.45, 7),
         new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.86 }),
@@ -229,6 +244,8 @@ export class KnowledgeDefenseThreeScene {
       crown.castShadow = true;
       this.scene.add(crown);
     });
+
+    if (this.performanceMode) return;
 
     const cloudMaterial = new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.9 });
     for (const [x, z, scale] of [
@@ -283,9 +300,11 @@ export class KnowledgeDefenseThreeScene {
     crystal.castShadow = true;
     group.add(crystal);
 
-    const light = new THREE.PointLight('#67e8f9', 3.2, 6);
-    light.position.y = 1.45;
-    group.add(light);
+    if (!this.performanceMode) {
+      const light = new THREE.PointLight('#67e8f9', 3.2, 6);
+      light.position.y = 1.45;
+      group.add(light);
+    }
     this.scene.add(group);
   }
 
@@ -298,7 +317,7 @@ export class KnowledgeDefenseThreeScene {
       const group = new THREE.Group();
       group.position.set(world.x, 0.16, world.z);
 
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.18, 24), ringMaterial.clone());
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.5, 0.18, this.performanceMode ? 12 : 24), ringMaterial.clone());
       base.castShadow = true;
       base.receiveShadow = true;
       base.userData.slotId = slot.id;
@@ -306,7 +325,7 @@ export class KnowledgeDefenseThreeScene {
       this.slotTargets.push(base);
       this.slotBases.set(slot.id, base);
 
-      const marker = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.028, 8, 18), emptyMaterial);
+      const marker = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.028, 6, this.performanceMode ? 10 : 18), emptyMaterial);
       marker.rotation.x = Math.PI / 2;
       marker.position.y = 0.12;
       marker.userData.slotId = slot.id;
@@ -394,7 +413,7 @@ export class KnowledgeDefenseThreeScene {
     const lightMaterial = new THREE.MeshStandardMaterial({ color: towerType.light, roughness: 0.6 });
 
     const range = new THREE.Mesh(
-      new THREE.CylinderGeometry(1, 1, 0.018, 40),
+      new THREE.CylinderGeometry(1, 1, 0.018, this.performanceMode ? 20 : 40),
       new THREE.MeshBasicMaterial({ color: towerType.color, transparent: true, opacity: 0.1, depthWrite: false }),
     );
     range.position.y = 0.018;
@@ -421,16 +440,18 @@ export class KnowledgeDefenseThreeScene {
     group.add(head);
 
     const gem = new THREE.Mesh(
-      new THREE.SphereGeometry(0.12, 12, 8),
+      new THREE.SphereGeometry(0.12, this.performanceMode ? 8 : 12, this.performanceMode ? 5 : 8),
       new THREE.MeshStandardMaterial({ color: '#f8fafc', emissive: towerType.light, emissiveIntensity: 0.42, roughness: 0.28 }),
     );
     gem.position.set(0, 1.22, 0);
     group.add(gem);
 
-    const pointLight = new THREE.PointLight(towerType.color, 0.48, 2.5);
-    pointLight.name = 'tower-light';
-    pointLight.position.y = 1.1;
-    group.add(pointLight);
+    if (!this.performanceMode) {
+      const pointLight = new THREE.PointLight(towerType.color, 0.48, 2.5);
+      pointLight.name = 'tower-light';
+      pointLight.position.y = 1.1;
+      group.add(pointLight);
+    }
 
     return { group, range };
   }
@@ -497,7 +518,7 @@ export class KnowledgeDefenseThreeScene {
 
     const eyeMaterial = new THREE.MeshStandardMaterial({ color: '#f8fafc', emissive: '#ffffff', emissiveIntensity: 0.2 });
     for (const x of [-0.16, 0.16]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), eyeMaterial);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, this.performanceMode ? 5 : 8, this.performanceMode ? 4 : 6), eyeMaterial);
       eye.position.set(x, 0.14, 0.39);
       group.add(eye);
     }
@@ -559,7 +580,7 @@ export class KnowledgeDefenseThreeScene {
     if (effect.kind === 'splash') {
       const point = toWorld(effect.to);
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.72, 0.035, 8, 48),
+        new THREE.TorusGeometry(0.72, 0.035, 6, this.performanceMode ? 18 : 48),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82, depthWrite: false }),
       );
       ring.position.set(point.x, 0.2, point.z);
@@ -567,14 +588,15 @@ export class KnowledgeDefenseThreeScene {
       group.add(ring);
 
       const wave = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.28, 0.68, 0.08, 32, 1, true),
+        new THREE.CylinderGeometry(0.28, 0.68, 0.08, this.performanceMode ? 14 : 32, 1, true),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }),
       );
       wave.position.set(point.x, 0.28, point.z);
       group.add(wave);
 
-      for (let index = 0; index < 10; index += 1) {
-        const angle = (Math.PI * 2 * index) / 10;
+      const shardCount = this.performanceMode ? 4 : 10;
+      for (let index = 0; index < shardCount; index += 1) {
+        const angle = (Math.PI * 2 * index) / shardCount;
         const shard = new THREE.Mesh(
           new THREE.TetrahedronGeometry(0.08 + (index % 3) * 0.025, 0),
           new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.72 }),
@@ -594,13 +616,13 @@ export class KnowledgeDefenseThreeScene {
     group.add(makeCylinderBetween(start, end, effect.kind === 'slow' ? 0.026 : 0.034, beamMaterial));
 
     const core = new THREE.Mesh(
-      new THREE.SphereGeometry(effect.kind === 'slow' ? 0.14 : 0.18, 12, 8),
+      new THREE.SphereGeometry(effect.kind === 'slow' ? 0.14 : 0.18, this.performanceMode ? 8 : 12, this.performanceMode ? 5 : 8),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.86 }),
     );
     core.position.copy(end);
     group.add(core);
 
-    const sparkCount = effect.kind === 'slow' ? 7 : 6;
+    const sparkCount = this.performanceMode ? (effect.kind === 'slow' ? 3 : 2) : effect.kind === 'slow' ? 7 : 6;
     for (let index = 0; index < sparkCount; index += 1) {
       const angle = (Math.PI * 2 * index) / sparkCount;
       const radius = effect.kind === 'slow' ? 0.26 : 0.2;
@@ -615,7 +637,7 @@ export class KnowledgeDefenseThreeScene {
 
     if (effect.kind === 'slow') {
       const frost = new THREE.Mesh(
-        new THREE.TorusGeometry(0.34, 0.018, 8, 32),
+        new THREE.TorusGeometry(0.34, 0.018, 6, this.performanceMode ? 16 : 32),
         new THREE.MeshBasicMaterial({ color: '#cffafe', transparent: true, opacity: 0.58 }),
       );
       frost.position.set(end.x, 0.28, end.z);
@@ -623,10 +645,18 @@ export class KnowledgeDefenseThreeScene {
       group.add(frost);
     }
 
-    const light = new THREE.PointLight(color, effect.kind === 'slow' ? 1.3 : 1.8, 3.2);
-    light.position.copy(end);
-    group.add(light);
+    if (!this.performanceMode) {
+      const light = new THREE.PointLight(color, effect.kind === 'slow' ? 1.3 : 1.8, 3.2);
+      light.position.copy(end);
+      group.add(light);
+    }
     return group;
+  }
+
+  private applyRendererQuality(): void {
+    const pixelRatio = window.devicePixelRatio || 1;
+    this.renderer.setPixelRatio(this.performanceMode ? Math.min(pixelRatio, 1.15) : Math.min(pixelRatio, 2));
+    this.renderer.shadowMap.enabled = !this.performanceMode;
   }
 
   private resizeIfNeeded(): void {
