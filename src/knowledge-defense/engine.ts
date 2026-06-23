@@ -118,6 +118,7 @@ export interface KnowledgeGameState {
 
 const segmentLengths = PATH_POINTS.slice(1).map((point, index) => distance(PATH_POINTS[index], point));
 export const PATH_TOTAL_LENGTH = segmentLengths.reduce((sum, length) => sum + length, 0);
+const OPENING_PREP_SECONDS = 18;
 
 export function createKnowledgeGameState(grade: GradeId, quizFilter: QuizFilter): KnowledgeGameState {
   const config = getGradeConfig(grade);
@@ -181,7 +182,7 @@ export function createKnowledgeGameState(grade: GradeId, quizFilter: QuizFilter)
 export function startGame(state: KnowledgeGameState): void {
   if (state.status === 'ready') {
     state.status = 'running';
-    state.nextWaveIn = 1.1;
+    state.nextWaveIn = OPENING_PREP_SECONDS;
   }
 }
 
@@ -394,6 +395,11 @@ export function accuracy(stats: SubjectStats): number {
 }
 
 function updateWaveSpawner(state: KnowledgeGameState, dt: number): void {
+  if (state.wave === 0 && answeredQuestionCount(state) === 0) {
+    state.nextWaveIn = OPENING_PREP_SECONDS;
+    return;
+  }
+
   if (state.spawnQueue > 0) {
     state.spawnTimer -= dt;
     if (state.spawnTimer <= 0) {
@@ -416,6 +422,10 @@ function updateWaveSpawner(state: KnowledgeGameState, dt: number): void {
     state.pressure = Math.min(100, state.pressure + 4 + pressureAdds * 2);
     pushLearningEvent(state, 'info', `第 ${state.wave} 波開始`, describeWavePreview(state.wave, state.grade));
   }
+}
+
+function answeredQuestionCount(state: KnowledgeGameState): number {
+  return Object.values(state.stats).reduce((sum, item) => sum + item.total, 0);
 }
 
 function updateEnemies(state: KnowledgeGameState, dt: number): void {

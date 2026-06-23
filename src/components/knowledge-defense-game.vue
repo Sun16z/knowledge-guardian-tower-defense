@@ -114,7 +114,7 @@
     </section>
 
     <section class="game-layout" :class="{ 'with-setup': state.status === 'ready' }">
-      <div class="battle-card">
+      <div ref="battleCardRef" class="battle-card">
         <header class="top-hud">
           <div>
             <span class="eyebrow">{{ state.config.label }} / {{ state.config.title }}</span>
@@ -203,9 +203,9 @@
       </div>
 
       <nav v-if="state.status !== 'ready'" class="mobile-action-rail" aria-label="手機快捷導覽">
-        <button type="button" @click="scrollToMobilePanel('quiz')">
-          <span>答題</span>
-          <strong>{{ totalCorrect }}/{{ runCorrectGoal }}</strong>
+        <button type="button" @click="scrollToMobilePanel('battle')">
+          <span>戰場</span>
+          <strong>{{ state.wave }}/{{ state.targetWaves }}</strong>
         </button>
         <button type="button" @click="scrollToMobilePanel('tower')">
           <span>建塔</span>
@@ -607,6 +607,7 @@ const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
   try: { total: 0, correct: 0 },
 });
 const battle3dHost = ref<HTMLElement | null>(null);
+const battleCardRef = ref<HTMLElement | null>(null);
 const quizCardRef = ref<HTMLElement | null>(null);
 const towerCardRef = ref<HTMLElement | null>(null);
 const progressCardRef = ref<HTMLElement | null>(null);
@@ -1113,9 +1114,15 @@ function startRun(): void {
   startGame(state);
 }
 
-function scrollToMobilePanel(panel: 'quiz' | 'tower' | 'progress'): void {
+function scrollToMobilePanel(panel: 'battle' | 'quiz' | 'tower' | 'progress'): void {
   const target =
-    panel === 'quiz' ? quizCardRef.value : panel === 'tower' ? towerCardRef.value : progressCardRef.value;
+    panel === 'battle'
+      ? battleCardRef.value
+      : panel === 'quiz'
+        ? quizCardRef.value
+        : panel === 'tower'
+          ? towerCardRef.value
+          : progressCardRef.value;
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -3100,8 +3107,7 @@ function shouldUsePerformanceMode(): boolean {
 
   .grade-picker,
   .control-panel,
-  .tower-list,
-  .answer-grid {
+  .tower-list {
     grid-template-columns: 1fr;
   }
 
@@ -3117,15 +3123,18 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .game-layout {
+    display: flex;
+    flex-direction: column;
     min-height: auto;
-    grid-template-rows: auto auto;
     gap: 12px;
-    padding-bottom: calc(86px + env(safe-area-inset-bottom));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
   }
 
   .battle-card {
+    order: 3;
     grid-template-rows: auto auto auto auto;
     padding: 0;
+    scroll-margin-block-start: 12px;
   }
 
   .top-hud,
@@ -3144,6 +3153,7 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .control-panel {
+    display: contents;
     max-height: none;
     overflow: visible;
   }
@@ -3159,8 +3169,59 @@ function shouldUsePerformanceMode(): boolean {
     scroll-margin-block-start: 12px;
   }
 
+  .quiz-card {
+    order: 1;
+  }
+
+  .tower-card {
+    order: 4;
+  }
+
   .progress-card {
+    order: 5;
     grid-column: auto;
+  }
+
+  .ability-preview {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 8px 9px;
+  }
+
+  .ability-preview small {
+    display: none;
+  }
+
+  .confidence-check {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .confidence-check > small,
+  .confidence-options small {
+    display: none;
+  }
+
+  .confidence-options button {
+    min-height: 42px;
+    padding: 6px;
+  }
+
+  .question-text {
+    min-height: auto;
+    font-size: 1.08rem;
+    line-height: 1.4;
+  }
+
+  .answer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .answer-button {
+    align-items: flex-start;
+    min-height: 58px;
+    padding: 9px;
+    font-size: 0.9rem;
+    line-height: 1.28;
   }
 
   .badge-token small,
@@ -3217,10 +3278,12 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .mobile-action-rail {
-    position: fixed;
-    right: max(10px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
-    left: max(10px, env(safe-area-inset-left));
+    order: 2;
+    position: sticky;
+    top: max(8px, env(safe-area-inset-top));
+    right: auto;
+    bottom: auto;
+    left: auto;
     z-index: 12;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3336,11 +3399,6 @@ function shouldUsePerformanceMode(): boolean {
     bottom: 10px;
     max-width: none;
   }
-
-  .question-text {
-    font-size: 1.08rem;
-    min-height: auto;
-  }
 }
 
 @media (max-width: 760px) and (max-height: 740px) {
@@ -3353,14 +3411,5 @@ function shouldUsePerformanceMode(): boolean {
     height: clamp(260px, 42dvh, 300px);
   }
 
-  .mobile-action-rail {
-    position: sticky;
-    right: auto;
-    bottom: max(8px, env(safe-area-inset-bottom));
-    left: auto;
-    z-index: 10;
-    width: 100%;
-    margin-top: -2px;
-  }
 }
 </style>
