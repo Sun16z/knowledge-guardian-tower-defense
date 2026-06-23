@@ -151,6 +151,11 @@
             <div class="result-panel">
               <span>{{ state.status === 'won' ? '守護成功' : '核心失守' }}</span>
               <strong>{{ state.status === 'won' ? '知識核心穩定了' : '重新調整塔位再挑戰' }}</strong>
+              <div class="result-summary" aria-label="戰後學習摘要">
+                <span>戰後摘要</span>
+                <strong>{{ resultAbilitySummary }}</strong>
+                <small>{{ resultAbilityDetail }}</small>
+              </div>
               <button class="primary-action compact" type="button" @click="resetGame(state.grade)">再玩一次</button>
             </div>
           </div>
@@ -380,6 +385,8 @@ interface RunSummary {
   correct: number;
   reviewed: number;
   hints: number;
+  abilityFocus?: string;
+  abilityPractice?: number;
 }
 
 const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
@@ -515,6 +522,31 @@ const abilityFocusSummary = computed(() => {
   if (!abilityWeaknessEntry.value) return '五力穩定';
   return `${abilityWeaknessEntry.value.label}優先`;
 });
+const resultAbilityEntry = computed(() => {
+  if (abilityWeaknessEntry.value) return abilityWeaknessEntry.value;
+  return abilityEntries.value
+    .filter((ability) => ability.total > 0)
+    .sort((a, b) => a.accuracy - b.accuracy || a.total - b.total)[0];
+});
+const resultAbilityPractice = computed(() => {
+  const ability = resultAbilityEntry.value;
+  if (!ability) return 0;
+  const openMistakes = Math.max(0, ability.mistakes - ability.reviewed);
+  if (openMistakes > 0) return Math.max(3, openMistakes + 2);
+  if (ability.mistakes > 0) return 2;
+  return ability.total > 0 ? 1 : 0;
+});
+const resultAbilitySummary = computed(() => {
+  const ability = resultAbilityEntry.value;
+  if (!ability) return '完成一題後建立摘要';
+  if (ability.mistakes === 0) return `${ability.label}保持穩定`;
+  return `${ability.label}優先練 ${resultAbilityPractice.value} 題`;
+});
+const resultAbilityDetail = computed(() => {
+  const ability = resultAbilityEntry.value;
+  if (!ability) return '先完成一題，系統會整理下一局的能力練習方向。';
+  return `本局 ${ability.total} 答 / ${ability.mistakes} 錯 / ${ability.reviewed} 修復。${ability.recoveryTip}`;
+});
 const missionEntries = computed(() => [
   { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
   { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
@@ -525,7 +557,8 @@ const latestRunSummary = computed(() => {
   if (!latest) return '';
   const result = latest.status === 'won' ? '成功' : '再挑戰';
   const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
-  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題`;
+  const abilityText = latest.abilityFocus ? ` / 補 ${latest.abilityFocus}` : '';
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}`;
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
@@ -724,6 +757,8 @@ function saveCompletedRunIfNeeded(): void {
     correct: totalCorrect.value,
     reviewed: totalReviewed.value,
     hints: state.hintsUsed,
+    abilityFocus: resultAbilityEntry.value?.label,
+    abilityPractice: resultAbilityPractice.value,
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
   try {
@@ -1268,6 +1303,36 @@ function loadRunHistory(): RunSummary[] {
 
 .result-panel strong {
   font-size: 1.35rem;
+}
+
+.result-summary {
+  display: grid;
+  gap: 5px;
+  width: min(360px, 100%);
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.result-summary span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.result-summary strong {
+  color: #1d4ed8;
+  font-size: 0.98rem;
+}
+
+.result-summary small {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 850;
 }
 
 .control-panel {
