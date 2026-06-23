@@ -78,6 +78,11 @@
           <em>{{ ability.count }} 題</em>
         </span>
       </div>
+      <div v-if="retryMission" class="retry-mission setup-retry" aria-label="再挑戰任務">
+        <span>再挑戰任務</span>
+        <strong :style="{ color: retryMission.color }">補強 {{ retryMission.label }} {{ retryMission.practice }} 題</strong>
+        <small>{{ retryMission.tip }}</small>
+      </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
     </section>
@@ -258,6 +263,14 @@
             </div>
             <small>本次條件題庫已看過 {{ seenQuestionCount }} / {{ currentQuestionCount }} 題</small>
           </div>
+          <div v-if="retryMission && state.status !== 'ready'" class="retry-mission" :class="{ done: retryMission.done }" aria-label="再挑戰任務進度">
+            <div class="retry-mission-heading">
+              <span>再挑戰任務</span>
+              <strong :style="{ color: retryMission.color }">{{ retryMission.label }}</strong>
+            </div>
+            <div class="retry-mission-track"><i :style="{ width: `${retryMission.percent}%`, background: retryMission.color }"></i></div>
+            <small>{{ retryMission.progress }} / {{ retryMission.practice }} 題穩定答對。{{ retryMission.tip }}</small>
+          </div>
           <div class="weakness-card" :class="{ clear: !weaknessHasTarget }" aria-label="弱點回補">
             <div class="weakness-heading">
               <span>科目回補</span>
@@ -385,6 +398,7 @@ interface RunSummary {
   correct: number;
   reviewed: number;
   hints: number;
+  abilityFocusId?: AbilityId;
   abilityFocus?: string;
   abilityPractice?: number;
 }
@@ -547,11 +561,40 @@ const resultAbilityDetail = computed(() => {
   if (!ability) return '先完成一題，系統會整理下一局的能力練習方向。';
   return `本局 ${ability.total} 答 / ${ability.mistakes} 錯 / ${ability.reviewed} 修復。${ability.recoveryTip}`;
 });
-const missionEntries = computed(() => [
-  { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
-  { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
-  { label: '核心保持 8+', value: `${state.coreHp}/12`, done: state.coreHp >= 8 },
-]);
+const retryMission = computed(() => {
+  const latest = runHistory.value[0];
+  if (!latest?.abilityFocus) return null;
+  const ability =
+    abilityCategories.find((item) => item.id === latest.abilityFocusId) ??
+    abilityCategories.find((item) => item.label === latest.abilityFocus);
+  const practice = Math.max(1, latest.abilityPractice ?? 3);
+  const progress = ability ? Math.min(practice, state.abilityStats[ability.id].correct) : 0;
+  return {
+    id: ability?.id,
+    label: ability?.label ?? latest.abilityFocus,
+    color: ability?.color ?? '#1d4ed8',
+    tip: ability?.recoveryTip ?? '先看錯題解題，再挑戰下一題。',
+    practice,
+    progress,
+    percent: Math.min(100, Math.round((progress / practice) * 100)),
+    done: progress >= practice,
+  };
+});
+const missionEntries = computed(() => {
+  const missions = [
+    { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
+    { label: `修復 ${reviewGoal.value} 題錯題`, value: `${totalReviewed.value}/${reviewGoal.value}`, done: totalReviewed.value >= reviewGoal.value },
+    { label: '核心保持 8+', value: `${state.coreHp}/12`, done: state.coreHp >= 8 },
+  ];
+  if (retryMission.value) {
+    missions.unshift({
+      label: `補強 ${retryMission.value.label}`,
+      value: `${retryMission.value.progress}/${retryMission.value.practice}`,
+      done: retryMission.value.done,
+    });
+  }
+  return missions;
+});
 const latestRunSummary = computed(() => {
   const latest = runHistory.value[0];
   if (!latest) return '';
@@ -757,6 +800,7 @@ function saveCompletedRunIfNeeded(): void {
     correct: totalCorrect.value,
     reviewed: totalReviewed.value,
     hints: state.hintsUsed,
+    abilityFocusId: resultAbilityEntry.value?.id,
     abilityFocus: resultAbilityEntry.value?.label,
     abilityPractice: resultAbilityPractice.value,
   };
@@ -983,6 +1027,78 @@ function loadRunHistory(): RunSummary[] {
 .ability-breakdown strong {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.retry-mission {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  line-height: 1.35;
+}
+
+.setup-retry {
+  width: min(760px, 100%);
+  margin-top: -4px;
+  border-color: rgba(191, 219, 254, 0.32);
+  background: rgba(15, 23, 42, 0.52);
+  color: #dbeafe;
+}
+
+.retry-mission.done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #14532d;
+}
+
+.retry-mission-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.retry-mission > span,
+.retry-mission-heading span {
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  opacity: 0.82;
+}
+
+.retry-mission strong,
+.retry-mission-heading strong {
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retry-mission small {
+  color: inherit;
+  font-size: 0.8rem;
+  font-weight: 850;
+  opacity: 0.88;
+}
+
+.retry-mission-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+
+.retry-mission-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
 }
 
 .primary-action,
