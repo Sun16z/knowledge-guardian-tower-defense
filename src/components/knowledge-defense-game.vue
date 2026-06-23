@@ -104,6 +104,13 @@
       </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
+      <div class="setup-quick-rail" aria-label="手機快速開始">
+        <span>
+          <strong>{{ setupQuickTitle }}</strong>
+          <small>{{ setupQuickMeta }}</small>
+        </span>
+        <button type="button" @click="startRun">開始守護</button>
+      </div>
     </section>
 
     <section class="game-layout" :class="{ 'with-setup': state.status === 'ready' }">
@@ -194,6 +201,21 @@
           </div>
         </div>
       </div>
+
+      <nav v-if="state.status !== 'ready'" class="mobile-action-rail" aria-label="手機快捷導覽">
+        <button type="button" @click="scrollToMobilePanel('quiz')">
+          <span>答題</span>
+          <strong>{{ totalCorrect }}/{{ runCorrectGoal }}</strong>
+        </button>
+        <button type="button" @click="scrollToMobilePanel('tower')">
+          <span>建塔</span>
+          <strong>{{ state.energy }}</strong>
+        </button>
+        <button type="button" @click="scrollToMobilePanel('progress')">
+          <span>學習</span>
+          <strong>{{ liveAccuracyText }}</strong>
+        </button>
+      </nav>
 
       <aside class="control-panel" aria-label="問答與建塔面板">
         <section ref="quizCardRef" class="quiz-card">
@@ -434,21 +456,6 @@
           </div>
         </section>
       </aside>
-
-      <nav v-if="state.status !== 'ready'" class="mobile-action-rail" aria-label="手機快捷導覽">
-        <button type="button" @click="scrollToMobilePanel('quiz')">
-          <span>答題</span>
-          <strong>{{ totalCorrect }}/{{ runCorrectGoal }}</strong>
-        </button>
-        <button type="button" @click="scrollToMobilePanel('tower')">
-          <span>建塔</span>
-          <strong>{{ state.energy }}</strong>
-        </button>
-        <button type="button" @click="scrollToMobilePanel('progress')">
-          <span>學習</span>
-          <strong>{{ liveAccuracyText }}</strong>
-        </button>
-      </nav>
     </section>
   </main>
 </template>
@@ -1017,6 +1024,15 @@ const currentQuestionMeta = computed(() => {
 const currentSelectionQuestions = computed(() => questionsForSelection(state.grade, quizFilter));
 const currentQuestionCount = computed(() => currentSelectionQuestions.value.length);
 const totalQuestionCount = computed(() => QUESTION_BANK.length);
+const setupQuickTitle = computed(() => {
+  const subject = subjectFilterOptions.find((item) => item.id === quizFilter.subject)?.label ?? '全科';
+  return `${state.config.label} / ${subject}`;
+});
+const setupQuickMeta = computed(() => {
+  const term = termOptions.find((item) => item.id === quizFilter.term)?.label ?? '綜合';
+  const exam = examOptions.find((item) => item.id === quizFilter.exam)?.label ?? '練習';
+  return `${term} ${exam} / ${currentQuestionCount.value} 題`;
+});
 const setupSubjectCounts = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[]).map((id) => ({
     id,
@@ -2001,6 +2017,7 @@ function shouldUsePerformanceMode(): boolean {
   height: 100%;
   display: block;
   cursor: pointer;
+  touch-action: pan-y;
 }
 
 .scene-chip {
@@ -2179,6 +2196,10 @@ function shouldUsePerformanceMode(): boolean {
 }
 
 .mobile-action-rail {
+  display: none;
+}
+
+.setup-quick-rail {
   display: none;
 }
 
@@ -3074,7 +3095,7 @@ function shouldUsePerformanceMode(): boolean {
       max(10px, env(safe-area-inset-bottom))
       max(10px, env(safe-area-inset-left));
     padding: 18px;
-    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
   }
 
   .grade-picker,
@@ -3117,8 +3138,8 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .battle-canvas {
-    height: clamp(320px, 48svh, 420px);
-    height: clamp(320px, 48dvh, 420px);
+    height: clamp(300px, 40svh, 360px);
+    height: clamp(300px, 40dvh, 360px);
     min-height: 0;
   }
 
@@ -3248,6 +3269,63 @@ function shouldUsePerformanceMode(): boolean {
     font-weight: 950;
   }
 
+  .setup-quick-rail {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 14;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.9);
+    box-shadow: 0 18px 38px rgba(2, 6, 23, 0.34);
+    backdrop-filter: blur(14px);
+  }
+
+  .setup-quick-rail span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .setup-quick-rail strong,
+  .setup-quick-rail small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .setup-quick-rail strong {
+    color: #f8fafc;
+    font-size: 0.94rem;
+    font-weight: 950;
+  }
+
+  .setup-quick-rail small {
+    color: #bfdbfe;
+    font-size: 0.75rem;
+    font-weight: 900;
+  }
+
+  .setup-quick-rail button {
+    min-height: 48px;
+    border: 0;
+    border-radius: 10px;
+    padding: 0 14px;
+    background: #f97316;
+    color: #ffffff;
+    font-weight: 950;
+    white-space: nowrap;
+    box-shadow: 0 12px 24px rgba(249, 115, 22, 0.32);
+    cursor: pointer;
+  }
+
   .scene-chip {
     display: none;
   }
@@ -3262,6 +3340,27 @@ function shouldUsePerformanceMode(): boolean {
   .question-text {
     font-size: 1.08rem;
     min-height: auto;
+  }
+}
+
+@media (max-width: 760px) and (max-height: 740px) {
+  .game-layout {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .battle-canvas {
+    height: clamp(260px, 42svh, 300px);
+    height: clamp(260px, 42dvh, 300px);
+  }
+
+  .mobile-action-rail {
+    position: sticky;
+    right: auto;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: auto;
+    z-index: 10;
+    width: 100%;
+    margin-top: -2px;
   }
 }
 </style>
