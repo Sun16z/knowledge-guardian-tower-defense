@@ -188,6 +188,12 @@
             <strong>{{ currentQuestionMeta }} / 第 {{ state.questionCursor + 1 }} 題</strong>
             <em v-if="currentQuestionIsReview">錯題複習</em>
           </div>
+          <div class="ability-preview" :style="{ borderColor: currentAbility.color }" aria-label="本題能力預告">
+            <span :style="{ background: currentAbility.color }">能力預告</span>
+            <strong>{{ currentAbility.label }}</strong>
+            <em>{{ currentAbilityRunText }}</em>
+            <small>{{ currentAbility.recoveryTip }}</small>
+          </div>
           <p class="question-text">{{ state.currentQuestion.prompt }}</p>
           <div class="hint-strip" :class="{ open: currentHintVisible }">
             <button type="button" :disabled="currentHintVisible || state.energy < 5" @click="revealHint">提示 -5 能量</button>
@@ -750,6 +756,16 @@ const latestRunSummary = computed(() => {
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
+const currentAbility = computed(() => {
+  const id = getQuestionAbility(state.currentQuestion);
+  return { id, ...ABILITIES[id] };
+});
+const currentAbilityStats = computed(() => state.abilityStats[currentAbility.value.id]);
+const currentAbilityRunText = computed(() => {
+  const stats = currentAbilityStats.value;
+  if (stats.total === 0) return '本局首次練習';
+  return `本局 ${stats.total} 答 / ${stats.mistakes} 錯 / ${accuracy(stats)}%`;
+});
 const currentQuestionMeta = computed(() => {
   const term = termOptions.find((item) => item.id === state.currentQuestion.term)?.label ?? '綜合';
   const exam = examOptions.find((item) => item.id === state.currentQuestion.exam)?.label ?? '練習';
@@ -1746,6 +1762,58 @@ function shouldUsePerformanceMode(): boolean {
 .progress-card {
   display: grid;
   gap: 12px;
+}
+
+.ability-preview {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.ability-preview span {
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.ability-preview strong,
+.ability-preview em,
+.ability-preview small {
+  min-width: 0;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ability-preview strong {
+  color: #0f172a;
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ability-preview em {
+  color: #0f766e;
+  font-size: 0.74rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ability-preview small {
+  grid-column: 1 / 4;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .question-text {
