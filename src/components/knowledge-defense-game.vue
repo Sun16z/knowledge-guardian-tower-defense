@@ -71,6 +71,13 @@
           <em>{{ subject.count }} 題</em>
         </span>
       </div>
+      <div class="ability-breakdown" aria-label="能力覆蓋">
+        <span v-for="ability in setupAbilityCounts" :key="ability.id">
+          <i :style="{ background: ability.color }"></i>
+          <strong>{{ ability.label }}</strong>
+          <em>{{ ability.count }} 題</em>
+        </span>
+      </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
     </section>
@@ -308,6 +315,7 @@ import {
   questionsForSelection,
   type ExamId,
   type GradeId,
+  type QuizQuestion,
   type QuizFilter,
   type SubjectId,
   type SubjectFilter,
@@ -342,6 +350,16 @@ interface RunSummary {
   reviewed: number;
   hints: number;
 }
+
+type AbilityId = 'reading' | 'englishCommunication' | 'mathReasoning' | 'scienceInquiry' | 'socialJudgment';
+
+const abilityCategories: Array<{ id: AbilityId; label: string; color: string }> = [
+  { id: 'reading', label: '語文理解', color: '#ef4444' },
+  { id: 'englishCommunication', label: '英語溝通', color: '#8b5cf6' },
+  { id: 'mathReasoning', label: '數學解題', color: '#f59e0b' },
+  { id: 'scienceInquiry', label: '科學探究', color: '#10b981' },
+  { id: 'socialJudgment', label: '社會判讀', color: '#3b82f6' },
+];
 
 const optionLabels = ['A', 'B', 'C', 'D'];
 const RUN_HISTORY_KEY = 'knowledge-defense-run-history-v1';
@@ -457,7 +475,8 @@ const currentQuestionMeta = computed(() => {
   const exam = examOptions.find((item) => item.id === state.currentQuestion.exam)?.label ?? '練習';
   return `${term}${exam}${state.currentQuestion.difficulty ? ` ${state.currentQuestion.difficulty}` : ''}`;
 });
-const currentQuestionCount = computed(() => questionsForSelection(state.grade, quizFilter).length);
+const currentSelectionQuestions = computed(() => questionsForSelection(state.grade, quizFilter));
+const currentQuestionCount = computed(() => currentSelectionQuestions.value.length);
 const totalQuestionCount = computed(() => QUESTION_BANK.length);
 const setupSubjectCounts = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[]).map((id) => ({
@@ -471,6 +490,16 @@ const setupSubjectCounts = computed(() =>
     }).length,
   })),
 );
+const setupAbilityCounts = computed(() => {
+  const counts = new Map<AbilityId, number>(abilityCategories.map((ability) => [ability.id, 0]));
+  for (const question of currentSelectionQuestions.value) {
+    const ability = abilityForQuestion(question);
+    counts.set(ability, (counts.get(ability) ?? 0) + 1);
+  }
+  return abilityCategories
+    .map((ability) => ({ ...ability, count: counts.get(ability.id) ?? 0 }))
+    .filter((ability) => ability.count > 0);
+});
 
 const subjectEntries = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[]).map((id) => ({
@@ -483,6 +512,14 @@ const subjectEntries = computed(() =>
     reviewed: state.stats[id].reviewed,
   })),
 );
+
+function abilityForQuestion(question: QuizQuestion): AbilityId {
+  if (question.subject === 'english') return 'englishCommunication';
+  if (question.subject === 'math') return 'mathReasoning';
+  if (question.subject === 'science') return 'scienceInquiry';
+  if (question.subject === 'social') return 'socialJudgment';
+  return 'reading';
+}
 const activeBoostEntries = computed(() =>
   (Object.keys(SUBJECTS) as SubjectId[])
     .map((id) => ({
@@ -667,7 +704,7 @@ function loadRunHistory(): RunSummary[] {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 24px;
+  gap: clamp(14px, 2vh, 24px);
   padding: 26px;
   color: #f8fafc;
   background:
@@ -792,7 +829,16 @@ function loadRunHistory(): RunSummary[] {
   margin-top: -12px;
 }
 
-.bank-breakdown span {
+.ability-breakdown {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  gap: 8px;
+  width: min(760px, 100%);
+  margin-top: -8px;
+}
+
+.bank-breakdown span,
+.ability-breakdown span {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -815,20 +861,30 @@ function loadRunHistory(): RunSummary[] {
   opacity: 1;
 }
 
-.bank-breakdown i {
+.ability-breakdown span {
+  border-color: rgba(191, 219, 254, 0.22);
+  background: rgba(30, 41, 59, 0.48);
+  opacity: 1;
+}
+
+.bank-breakdown i,
+.ability-breakdown i {
   width: 10px;
   height: 10px;
   border-radius: 999px;
 }
 
 .bank-breakdown strong,
-.bank-breakdown em {
+.bank-breakdown em,
+.ability-breakdown strong,
+.ability-breakdown em {
   min-width: 0;
   font-style: normal;
   white-space: nowrap;
 }
 
-.bank-breakdown strong {
+.bank-breakdown strong,
+.ability-breakdown strong {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1683,7 +1739,8 @@ function loadRunHistory(): RunSummary[] {
     justify-content: start;
   }
 
-  .bank-breakdown {
+  .bank-breakdown,
+  .ability-breakdown {
     grid-template-columns: 1fr;
     width: 100%;
     margin-top: -4px;
