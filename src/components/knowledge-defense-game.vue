@@ -81,7 +81,7 @@
       <div v-if="retryMission" class="retry-mission setup-retry" aria-label="再挑戰任務">
         <span>再挑戰任務</span>
         <strong :style="{ color: retryMission.color }">補強 {{ retryMission.label }} {{ retryMission.practice }} 題</strong>
-        <small>{{ retryMission.tip }}</small>
+        <small>{{ retryMission.tip }} {{ retryMissionFocusText }}</small>
       </div>
 
       <button class="primary-action" type="button" @click="startRun">開始守護</button>
@@ -269,7 +269,7 @@
               <strong :style="{ color: retryMission.color }">{{ retryMission.label }}</strong>
             </div>
             <div class="retry-mission-track"><i :style="{ width: `${retryMission.percent}%`, background: retryMission.color }"></i></div>
-            <small>{{ retryMission.progress }} / {{ retryMission.practice }} 題穩定答對。{{ retryMission.tip }}</small>
+            <small>{{ retryMission.progress }} / {{ retryMission.practice }} 題穩定答對。{{ retryMissionFocusText }} {{ retryMission.tip }}</small>
           </div>
           <div class="weakness-card" :class="{ clear: !weaknessHasTarget }" aria-label="弱點回補">
             <div class="weakness-heading">
@@ -580,6 +580,17 @@ const retryMission = computed(() => {
     done: progress >= practice,
   };
 });
+const retryMissionDeckFocusCount = computed(() => {
+  const mission = retryMission.value;
+  if (!mission?.id) return 0;
+  const focusWindow = Math.min(Math.max(2, mission.practice), 6, state.questionDeck.length);
+  return state.questionDeck.slice(0, focusWindow).filter((question) => getQuestionAbility(question) === mission.id).length;
+});
+const retryMissionFocusText = computed(() => {
+  if (!retryMission.value?.id) return '';
+  if (retryMissionDeckFocusCount.value === 0) return '目前條件沒有相符能力題，任務會保留到合適題庫。';
+  return `前段優先 ${retryMissionDeckFocusCount.value} 題。`;
+});
 const missionEntries = computed(() => {
   const missions = [
     { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
@@ -688,6 +699,7 @@ function setSubject(subject: SubjectFilter): void {
 }
 
 function startRun(): void {
+  applyRetryMissionQuestionFocus();
   void audio?.ensureStarted();
   startGame(state);
 }
@@ -736,6 +748,7 @@ function toggleSound(): void {
 
 function resetGame(grade: GradeId): void {
   Object.assign(state, createKnowledgeGameState(grade, quizFilter));
+  applyRetryMissionQuestionFocus();
   selectedTowerType.value = 'number';
   selectedTargetMode.value = 'front';
   heardEffectIds.clear();
@@ -744,8 +757,24 @@ function resetGame(grade: GradeId): void {
   lastFrame = 0;
 }
 
+function applyRetryMissionQuestionFocus(): void {
+  const mission = retryMission.value;
+  if (!mission?.id || state.status !== 'ready' || state.questionDeck.length === 0) return;
+
+  const targetQuestions = state.questionDeck.filter((question) => getQuestionAbility(question) === mission.id);
+  if (targetQuestions.length === 0) return;
+
+  const focusCount = Math.min(Math.max(2, mission.practice), targetQuestions.length, 6);
+  const focusIds = new Set(targetQuestions.slice(0, focusCount).map((question) => question.id));
+  const remainingQuestions = state.questionDeck.filter((question) => !focusIds.has(question.id));
+  state.questionDeck = [...targetQuestions.slice(0, focusCount), ...remainingQuestions];
+  state.questionCursor = 0;
+  state.currentQuestion = state.questionDeck[0];
+}
+
 onMounted(() => {
   runHistory.value = loadRunHistory();
+  applyRetryMissionQuestionFocus();
   audio = new KnowledgeDefenseAudio();
   audio.setEnabled(soundEnabled.value);
   if (battle3dHost.value) {
