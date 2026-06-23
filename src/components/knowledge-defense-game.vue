@@ -277,6 +277,23 @@
             </div>
             <small>{{ abilityWeaknessGuideText }}</small>
           </div>
+          <div class="ability-lens" aria-label="本局能力雷達">
+            <div class="ability-lens-heading">
+              <span>能力雷達</span>
+              <strong>{{ abilityFocusSummary }}</strong>
+            </div>
+            <div
+              v-for="ability in abilityEntries"
+              :key="ability.id"
+              class="ability-lens-row"
+              :class="{ active: ability.id === abilityWeaknessId }"
+            >
+              <span>{{ ability.label }}</span>
+              <div><i :style="{ width: `${ability.total === 0 ? 0 : ability.accuracy}%`, background: ability.color }"></i></div>
+              <strong>{{ ability.total === 0 ? '-' : `${ability.accuracy}%` }}</strong>
+              <small>{{ ability.total }} 答 / {{ ability.mistakes }} 錯 / {{ ability.reviewed }} 修復</small>
+            </div>
+          </div>
           <div class="subject-bars">
             <div v-for="subject in subjectEntries" :key="subject.id" class="subject-row">
               <span>{{ subject.label }}</span>
@@ -473,6 +490,7 @@ const abilityWeaknessEntry = computed(() => {
   return ranked[0];
 });
 const abilityWeaknessHasTarget = computed(() => Boolean(abilityWeaknessEntry.value));
+const abilityWeaknessId = computed(() => abilityWeaknessEntry.value?.id ?? '');
 const abilityWeaknessLabel = computed(() => abilityWeaknessEntry.value?.label ?? '目前穩定');
 const abilityWeaknessColor = computed(() => abilityWeaknessEntry.value?.color ?? '#0f766e');
 const abilityWeaknessAccuracy = computed(() => abilityWeaknessEntry.value?.accuracy ?? 100);
@@ -491,6 +509,11 @@ const abilityWeaknessGuideText = computed(() => {
     return `${ability.label}還有 ${abilityWeaknessOpenCount.value} 題待修復。${ability.recoveryTip}`;
   }
   return `${ability.label}已回補。${ability.recoveryTip}`;
+});
+const abilityFocusSummary = computed(() => {
+  if (totalAnswered.value === 0) return '等待答題';
+  if (!abilityWeaknessEntry.value) return '五力穩定';
+  return `${abilityWeaknessEntry.value.label}優先`;
 });
 const missionEntries = computed(() => [
   { label: `答對 ${runCorrectGoal.value} 題`, value: `${totalCorrect.value}/${runCorrectGoal.value}`, done: totalCorrect.value >= runCorrectGoal.value },
@@ -1661,6 +1684,95 @@ function loadRunHistory(): RunSummary[] {
   display: block;
   height: 100%;
   border-radius: inherit;
+}
+
+.ability-lens {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.ability-lens-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ability-lens-heading span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.ability-lens-heading strong {
+  min-width: 0;
+  color: #1d4ed8;
+  font-size: 0.88rem;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ability-lens-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-weight: 900;
+}
+
+.ability-lens-row.active {
+  border-color: #f59e0b;
+  background: #fff7ed;
+}
+
+.ability-lens-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: #334155;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ability-lens-row div {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbeafe;
+}
+
+.ability-lens-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.ability-lens-row strong {
+  color: #0f766e;
+  font-size: 0.78rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ability-lens-row small {
+  grid-column: 2 / 4;
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.25;
 }
 
 .subject-row {
