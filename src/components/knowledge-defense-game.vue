@@ -577,6 +577,7 @@ const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
 const selectedConfidence = ref<ConfidenceLevel | null>(null);
 const priorityReviewNotice = ref('');
 const highConfidenceMistakes = ref<MisconceptionEntry[]>([]);
+const repairStreak = ref(0);
 const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
   sure: { total: 0, correct: 0 },
   maybe: { total: 0, correct: 0 },
@@ -781,6 +782,7 @@ const retryMissionFocusText = computed(() => {
   if (retryMissionDeckFocusCount.value === 0) return '目前條件沒有相符能力題，任務會保留到合適題庫。';
   return `前段優先 ${retryMissionDeckFocusCount.value} 題。`;
 });
+const repairStreakGoal = computed(() => Math.min(3, Math.max(2, highConfidenceMistakes.value.length || 2)));
 const runBadges = computed<RunBadge[]>(() => [
   {
     id: 'warmup',
@@ -805,6 +807,14 @@ const runBadges = computed<RunBadge[]>(() => [
     progress: `${Math.min(totalReviewed.value, reviewBadgeGoal.value)}/${reviewBadgeGoal.value}`,
     color: '#4f46e5',
     unlocked: totalReviewed.value >= reviewBadgeGoal.value,
+  },
+  {
+    id: 'repair-streak',
+    label: '修正連擊',
+    detail: `連續修正 ${repairStreakGoal.value} 個迷思`,
+    progress: `${Math.min(repairStreak.value, repairStreakGoal.value)}/${repairStreakGoal.value}`,
+    color: '#db2777',
+    unlocked: repairStreak.value >= repairStreakGoal.value,
   },
   {
     id: 'retry',
@@ -1082,7 +1092,8 @@ function chooseAnswer(index: number): void {
   if (result.correct) {
     const repaired = recordHighConfidenceRepair(answeredQuestion);
     if (repaired) {
-      priorityReviewNotice.value = '迷思修正完成，週報卡已更新修正率。';
+      repairStreak.value += 1;
+      priorityReviewNotice.value = `迷思修正完成，週報卡已更新修正率。修正連擊 ${repairStreak.value}/${repairStreakGoal.value}。`;
     }
   } else if (confidence === 'sure') {
     prioritizeReviewQuestion(state, answeredQuestion, 0);
@@ -1139,6 +1150,7 @@ function resetGame(grade: GradeId): void {
   selectedConfidence.value = null;
   priorityReviewNotice.value = '';
   highConfidenceMistakes.value = [];
+  repairStreak.value = 0;
   resetConfidenceStats();
   heardEffectIds.clear();
   heardWave = 0;
