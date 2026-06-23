@@ -395,6 +395,10 @@
             <strong>家長摘要</strong>
             <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ confidenceCalibrationText }}。{{ parentWeeklyReport.nextStep }}</span>
           </div>
+          <div class="misconception-note" :class="{ empty: misconceptionFocusList.length === 0 }">
+            <strong>迷思清單</strong>
+            <span>{{ misconceptionFocusText }}</span>
+          </div>
           <div class="history-note">
             <strong>最近戰績</strong>
             <span v-if="runHistory.length === 0">完成一局後會在這裡留下本機紀錄。</span>
@@ -426,6 +430,7 @@ import {
   type ExamId,
   type GradeId,
   type QuizFilter,
+  type QuizQuestion,
   type SubjectId,
   type SubjectFilter,
   type TermId,
@@ -463,6 +468,7 @@ interface RunSummary {
   abilityFocus?: string;
   abilityPractice?: number;
   confidenceSummary?: string;
+  misconceptionFocuses?: string[];
   badges?: string[];
 }
 
@@ -478,6 +484,15 @@ interface RunBadge {
 interface ParentWeeklyReport {
   summary: string;
   nextStep: string;
+}
+
+interface MisconceptionEntry {
+  id: string;
+  subjectLabel: string;
+  abilityLabel: string;
+  prompt: string;
+  correctAnswer: string;
+  count: number;
 }
 
 type GraphicsMode = 'auto' | 'performance' | 'quality';
@@ -518,6 +533,7 @@ const soundEnabled = ref(true);
 const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
 const selectedConfidence = ref<ConfidenceLevel | null>(null);
 const priorityReviewNotice = ref('');
+const highConfidenceMistakes = ref<MisconceptionEntry[]>([]);
 const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
   sure: { total: 0, correct: 0 },
   maybe: { total: 0, correct: 0 },
@@ -761,6 +777,26 @@ const badgeSummaryText = computed(() => {
   if (unlockedRunBadges.value.length === 0) return '先拿暖身守護';
   return `已解鎖 ${unlockedRunBadges.value.length} 枚`;
 });
+const misconceptionFocusList = computed(() => {
+  const counts = new Map<string, number>();
+  for (const entry of highConfidenceMistakes.value) {
+    const label = formatMisconceptionEntry(entry);
+    counts.set(label, (counts.get(label) ?? 0) + entry.count);
+  }
+  for (const run of runHistory.value) {
+    for (const label of run.misconceptionFocuses ?? []) {
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'))
+    .slice(0, 3)
+    .map(([label]) => label);
+});
+const misconceptionFocusText = computed(() => {
+  if (misconceptionFocusList.value.length === 0) return '尚未累積高把握錯題；出現後會整理最需要修正的觀念。';
+  return misconceptionFocusList.value.join(' / ');
+});
 const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const weeklyRuns = runHistory.value.filter((run) => {
@@ -789,10 +825,11 @@ const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
   const nextStep = focusLabel
     ? `下次先補 ${focusLabel}，再挑戰一局。`
     : '下次維持五科輪替，觀察哪一項能力開始掉分。';
+  const misconceptionStep = misconceptionFocusList.value.length > 0 ? `迷思先修：${misconceptionFocusList.value[0]}。` : '';
 
   return {
     summary: `最近 7 日 ${weeklyRuns.length} 局 / 勝 ${wins} / 正確率 ${accuracyText} / 修復 ${reviewed} 題 / 徽章 ${badgeCount}`,
-    nextStep,
+    nextStep: `${misconceptionStep}${nextStep}`,
   };
 });
 const missionEntries = computed(() => {
@@ -817,8 +854,9 @@ const latestRunSummary = computed(() => {
   const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
   const abilityText = latest.abilityFocus ? ` / 補 ${latest.abilityFocus}` : '';
   const confidenceText = latest.confidenceSummary ? ` / ${latest.confidenceSummary}` : '';
+  const misconceptionText = latest.misconceptionFocuses?.length ? ` / 迷思 ${latest.misconceptionFocuses.length}` : '';
   const badgeText = latest.badges?.length ? ` / 徽章 ${latest.badges.length}` : '';
-  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${confidenceText}${badgeText}`;
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${confidenceText}${misconceptionText}${badgeText}`;
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
@@ -934,6 +972,7 @@ function chooseAnswer(index: number): void {
   recordConfidenceAnswer(confidence, result.correct);
   if (!result.correct && confidence === 'sure') {
     prioritizeReviewQuestion(state, answeredQuestion, 0);
+    recordHighConfidenceMistake(answeredQuestion, result.correctAnswer);
     priorityReviewNotice.value = '高把握錯題已列為立即複習，下一題先修正這個觀念。';
   }
   selectedConfidence.value = null;
@@ -985,6 +1024,7 @@ function resetGame(grade: GradeId): void {
   selectedTargetMode.value = 'front';
   selectedConfidence.value = null;
   priorityReviewNotice.value = '';
+  highConfidenceMistakes.value = [];
   resetConfidenceStats();
   heardEffectIds.clear();
   heardWave = 0;
@@ -1010,6 +1050,31 @@ function applyRetryMissionQuestionFocus(): void {
 function recordConfidenceAnswer(level: ConfidenceLevel, correct: boolean): void {
   confidenceStats[level].total += 1;
   if (correct) confidenceStats[level].correct += 1;
+}
+
+function recordHighConfidenceMistake(question: QuizQuestion, correctAnswer: string): void {
+  const existing = highConfidenceMistakes.value.find((entry) => entry.id === question.id);
+  if (existing) {
+    existing.count += 1;
+    return;
+  }
+  const ability = ABILITIES[getQuestionAbility(question)];
+  highConfidenceMistakes.value = [
+    {
+      id: question.id,
+      subjectLabel: SUBJECTS[question.subject].label,
+      abilityLabel: ability.label,
+      prompt: question.prompt,
+      correctAnswer,
+      count: 1,
+    },
+    ...highConfidenceMistakes.value,
+  ].slice(0, 5);
+}
+
+function formatMisconceptionEntry(entry: MisconceptionEntry): string {
+  const prompt = entry.prompt.length > 22 ? `${entry.prompt.slice(0, 22)}...` : entry.prompt;
+  return `${entry.subjectLabel}/${entry.abilityLabel}：${prompt} 正解 ${entry.correctAnswer}`;
 }
 
 function resetConfidenceStats(): void {
@@ -1086,6 +1151,7 @@ function saveCompletedRunIfNeeded(): void {
     abilityFocus: resultAbilityEntry.value?.label,
     abilityPractice: resultAbilityPractice.value,
     confidenceSummary: confidenceCalibrationText.value,
+    misconceptionFocuses: highConfidenceMistakes.value.slice(0, 3).map(formatMisconceptionEntry),
     badges: unlockedRunBadges.value.map((badge) => badge.label),
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
@@ -2654,6 +2720,32 @@ function shouldUsePerformanceMode(): boolean {
 
 .commercial-note strong {
   font-size: 0.92rem;
+}
+
+.misconception-note {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  line-height: 1.45;
+}
+
+.misconception-note.empty {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.misconception-note strong {
+  color: #c2410c;
+  font-size: 0.92rem;
+}
+
+.misconception-note.empty strong {
+  color: #0f766e;
 }
 
 .history-note {
