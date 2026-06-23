@@ -194,6 +194,26 @@
             <em>{{ currentAbilityRunText }}</em>
             <small>{{ currentAbility.recoveryTip }}</small>
           </div>
+          <div class="confidence-check" aria-label="答題前信心選擇">
+            <div class="confidence-heading">
+              <span>答題前信心</span>
+              <strong>{{ confidenceCalibrationText }}</strong>
+            </div>
+            <div class="confidence-options">
+              <button
+                v-for="option in confidenceOptions"
+                :key="option.id"
+                type="button"
+                :class="{ active: selectedConfidence === option.id }"
+                :aria-pressed="selectedConfidence === option.id"
+                @click="selectedConfidence = option.id"
+              >
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.detail }}</small>
+              </button>
+            </div>
+            <small>{{ confidenceGuideText }}</small>
+          </div>
           <p class="question-text">{{ state.currentQuestion.prompt }}</p>
           <div class="hint-strip" :class="{ open: currentHintVisible }">
             <button type="button" :disabled="currentHintVisible || state.energy < 5" @click="revealHint">提示 -5 能量</button>
@@ -206,7 +226,7 @@
               :key="option"
               class="answer-button"
               type="button"
-              :disabled="state.status === 'won' || state.status === 'lost'"
+              :disabled="state.status === 'won' || state.status === 'lost' || !selectedConfidence"
               @click="chooseAnswer(index)"
             >
               <span>{{ optionLabels[index] }}</span>
@@ -372,7 +392,7 @@
           </div>
           <div class="commercial-note">
             <strong>家長摘要</strong>
-            <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ parentWeeklyReport.nextStep }}</span>
+            <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ confidenceCalibrationText }}。{{ parentWeeklyReport.nextStep }}</span>
           </div>
           <div class="history-note">
             <strong>最近戰績</strong>
@@ -440,6 +460,7 @@ interface RunSummary {
   abilityFocusId?: AbilityId;
   abilityFocus?: string;
   abilityPractice?: number;
+  confidenceSummary?: string;
   badges?: string[];
 }
 
@@ -457,6 +478,20 @@ interface ParentWeeklyReport {
   nextStep: string;
 }
 
+type GraphicsMode = 'auto' | 'performance' | 'quality';
+type ConfidenceLevel = 'sure' | 'maybe' | 'try';
+
+interface ConfidenceOption {
+  id: ConfidenceLevel;
+  label: string;
+  detail: string;
+}
+
+interface ConfidenceBucket {
+  total: number;
+  correct: number;
+}
+
 const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
 
 const optionLabels = ['A', 'B', 'C', 'D'];
@@ -468,12 +503,23 @@ const targetModeOptions = TARGET_MODE_OPTIONS;
 const termOptions = TERM_OPTIONS;
 const examOptions = EXAM_OPTIONS;
 const subjectFilterOptions = SUBJECT_FILTER_OPTIONS;
+const confidenceOptions: ConfidenceOption[] = [
+  { id: 'sure', label: '很有把握', detail: '先穩穩拿分' },
+  { id: 'maybe', label: '有點不確定', detail: '看完再判斷' },
+  { id: 'try', label: '先試試', detail: '用策略拆題' },
+];
 const quizFilter = reactive<QuizFilter>({ ...DEFAULT_QUIZ_FILTER });
 const state = reactive(createKnowledgeGameState(1, quizFilter));
 const selectedTowerType = ref<TowerTypeId>('number');
 const selectedTargetMode = ref<TowerTargetMode>('front');
 const soundEnabled = ref(true);
 const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
+const selectedConfidence = ref<ConfidenceLevel | null>(null);
+const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
+  sure: { total: 0, correct: 0 },
+  maybe: { total: 0, correct: 0 },
+  try: { total: 0, correct: 0 },
+});
 const battle3dHost = ref<HTMLElement | null>(null);
 const runHistory = ref<RunSummary[]>([]);
 let threeScene: KnowledgeDefenseThreeScene | null = null;
@@ -483,8 +529,6 @@ let animationFrame = 0;
 let lastFrame = 0;
 let heardWave = 0;
 let savedResultStatus: 'won' | 'lost' | '' = '';
-
-type GraphicsMode = 'auto' | 'performance' | 'quality';
 
 const statusLabel = computed(() => {
   if (state.status === 'ready') return '部署階段';
@@ -532,6 +576,24 @@ const nextWavePreview = computed(() => {
 });
 const currentHintVisible = computed(() => state.hintQuestionIds.includes(state.currentQuestion.id));
 const currentQuestionHint = computed(() => state.currentQuestion.hint ?? state.currentQuestion.explanation);
+const confidenceAnsweredTotal = computed(() =>
+  Object.values(confidenceStats).reduce((sum, bucket) => sum + bucket.total, 0),
+);
+const confidenceCorrectTotal = computed(() =>
+  Object.values(confidenceStats).reduce((sum, bucket) => sum + bucket.correct, 0),
+);
+const confidenceCalibrationText = computed(() => {
+  if (confidenceAnsweredTotal.value === 0) return '尚未校準';
+  const sure = confidenceStats.sure;
+  const sureText = sure.total === 0 ? '高把握 -' : `高把握 ${Math.round((sure.correct / sure.total) * 100)}%`;
+  return `校準 ${confidenceCorrectTotal.value}/${confidenceAnsweredTotal.value}，${sureText}`;
+});
+const confidenceGuideText = computed(() => {
+  if (!selectedConfidence.value) return '先選信心，答案才會解鎖。';
+  if (selectedConfidence.value === 'sure') return '保持節奏，答完看看高把握是否真的穩。';
+  if (selectedConfidence.value === 'maybe') return '先圈關鍵詞，再比對每個選項。';
+  return '先用提示策略拆題，答錯也會進入複習。';
+});
 const totalAnswered = computed(() => subjectEntries.value.reduce((sum, subject) => sum + subject.total, 0));
 const totalCorrect = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].correct, 0));
 const totalReviewed = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].reviewed, 0));
@@ -751,8 +813,9 @@ const latestRunSummary = computed(() => {
   const result = latest.status === 'won' ? '成功' : '再挑戰';
   const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
   const abilityText = latest.abilityFocus ? ` / 補 ${latest.abilityFocus}` : '';
+  const confidenceText = latest.confidenceSummary ? ` / ${latest.confidenceSummary}` : '';
   const badgeText = latest.badges?.length ? ` / 徽章 ${latest.badges.length}` : '';
-  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${badgeText}`;
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${confidenceText}${badgeText}`;
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
@@ -856,11 +919,15 @@ function startRun(): void {
 
 function chooseAnswer(index: number): void {
   void audio?.ensureStarted();
+  if (!selectedConfidence.value) return;
   if (state.status === 'ready') {
     startGame(state);
   }
   if (state.status !== 'running') return;
+  const confidence = selectedConfidence.value;
   const result = answerQuestion(state, index);
+  recordConfidenceAnswer(confidence, result.correct);
+  selectedConfidence.value = null;
   audio?.playAnswer(result.correct);
 }
 
@@ -907,6 +974,8 @@ function resetGame(grade: GradeId): void {
   applyRetryMissionQuestionFocus();
   selectedTowerType.value = 'number';
   selectedTargetMode.value = 'front';
+  selectedConfidence.value = null;
+  resetConfidenceStats();
   heardEffectIds.clear();
   heardWave = 0;
   savedResultStatus = '';
@@ -926,6 +995,18 @@ function applyRetryMissionQuestionFocus(): void {
   state.questionDeck = [...targetQuestions.slice(0, focusCount), ...remainingQuestions];
   state.questionCursor = 0;
   state.currentQuestion = state.questionDeck[0];
+}
+
+function recordConfidenceAnswer(level: ConfidenceLevel, correct: boolean): void {
+  confidenceStats[level].total += 1;
+  if (correct) confidenceStats[level].correct += 1;
+}
+
+function resetConfidenceStats(): void {
+  for (const bucket of Object.values(confidenceStats)) {
+    bucket.total = 0;
+    bucket.correct = 0;
+  }
 }
 
 function rebuildThreeScene(): void {
@@ -994,6 +1075,7 @@ function saveCompletedRunIfNeeded(): void {
     abilityFocusId: resultAbilityEntry.value?.id,
     abilityFocus: resultAbilityEntry.value?.label,
     abilityPractice: resultAbilityPractice.value,
+    confidenceSummary: confidenceCalibrationText.value,
     badges: unlockedRunBadges.value.map((badge) => badge.label),
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
@@ -1814,6 +1896,95 @@ function shouldUsePerformanceMode(): boolean {
   color: #64748b;
   font-size: 0.75rem;
   line-height: 1.35;
+}
+
+.confidence-check {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+}
+
+.confidence-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.confidence-heading span,
+.confidence-heading strong,
+.confidence-check > small {
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.confidence-heading span {
+  color: #475569;
+  white-space: nowrap;
+}
+
+.confidence-heading strong {
+  min-width: 0;
+  color: #0f766e;
+  text-align: right;
+}
+
+.confidence-check > small {
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.confidence-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.confidence-options button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 50px;
+  padding: 7px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+}
+
+.confidence-options button:hover {
+  border-color: #14b8a6;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.12);
+}
+
+.confidence-options button.active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.confidence-options strong,
+.confidence-options small {
+  overflow-wrap: anywhere;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.confidence-options strong {
+  font-size: 0.75rem;
+}
+
+.confidence-options small {
+  color: inherit;
+  font-size: 0.66rem;
+  opacity: 0.82;
 }
 
 .question-text {
