@@ -497,6 +497,8 @@ interface RunSummary {
   abilityPractice?: number;
   confidenceSummary?: string;
   misconceptionFocuses?: string[];
+  misconceptionTotal?: number;
+  misconceptionRepaired?: number;
   badges?: string[];
 }
 
@@ -521,6 +523,7 @@ interface MisconceptionEntry {
   prompt: string;
   correctAnswer: string;
   count: number;
+  repaired: boolean;
 }
 
 interface WeeklyReportMetric {
@@ -880,21 +883,33 @@ const weeklyCoachCard = computed<WeeklyCoachCard>(() => {
   const weeklyAnswered = runs.reduce((sum, run) => sum + run.answered, 0);
   const weeklyCorrect = runs.reduce((sum, run) => sum + run.correct, 0);
   const weeklyReviewed = runs.reduce((sum, run) => sum + run.reviewed, 0);
+  const weeklyMisconceptionTotal = runs.reduce((sum, run) => sum + (run.misconceptionTotal ?? run.misconceptionFocuses?.length ?? 0), 0);
+  const weeklyMisconceptionRepaired = runs.reduce((sum, run) => sum + (run.misconceptionRepaired ?? 0), 0);
   const liveAnswered = totalAnswered.value;
   const liveCorrect = totalCorrect.value;
   const liveReviewed = totalReviewed.value;
+  const liveMisconceptionTotal = highConfidenceMistakes.value.length;
+  const liveMisconceptionRepaired = highConfidenceMistakes.value.filter((entry) => entry.repaired).length;
   const answered = weeklyAnswered + liveAnswered;
   const correct = weeklyCorrect + liveCorrect;
   const reviewed = weeklyReviewed + liveReviewed;
+  const misconceptionTotal = weeklyMisconceptionTotal + liveMisconceptionTotal;
+  const misconceptionRepaired = weeklyMisconceptionRepaired + liveMisconceptionRepaired;
+  const openMisconceptions = Math.max(0, misconceptionTotal - misconceptionRepaired);
   const accuracyText = answered === 0 ? '-' : `${Math.round((correct / answered) * 100)}%`;
-  const misconceptionCount = misconceptionFocusList.value.length;
-  const focusLabel = misconceptionFocusList.value[0] ?? retryMission.value?.label ?? resultAbilityEntry.value?.label ?? '五科輪替';
-  const practiceCount = misconceptionCount > 0 ? 6 + misconceptionCount * 2 : retryMission.value?.practice ?? Math.max(3, Math.ceil(runCorrectGoal.value / 6));
+  const repairRateText = misconceptionTotal === 0 ? '-' : `${Math.round((misconceptionRepaired / misconceptionTotal) * 100)}%`;
+  const openMisconception = highConfidenceMistakes.value.find((entry) => !entry.repaired);
+  const focusLabel = openMisconception
+    ? formatMisconceptionEntry(openMisconception)
+    : misconceptionFocusList.value[0] ?? retryMission.value?.label ?? resultAbilityEntry.value?.label ?? '五科輪替';
+  const practiceCount = openMisconceptions > 0 ? 6 + openMisconceptions * 2 : retryMission.value?.practice ?? Math.max(3, Math.ceil(runCorrectGoal.value / 6));
   const status =
     answered === 0
       ? '等待第一局'
-      : misconceptionCount > 0
-        ? '先修迷思'
+      : openMisconceptions > 0
+        ? '修正中'
+        : misconceptionTotal > 0
+          ? '迷思已修復'
         : liveAccuracy.value >= 80 || correct / Math.max(1, answered) >= 0.8
           ? '穩定前進'
           : '需要回補';
@@ -913,15 +928,17 @@ const weeklyCoachCard = computed<WeeklyCoachCard>(() => {
         detail: answered === 0 ? '等待資料' : `${correct}/${answered} 題`,
       },
       {
-        label: '修復/迷思',
-        value: `${reviewed}/${misconceptionCount}`,
-        detail: misconceptionCount > 0 ? '先修迷思' : '觀察中',
+        label: '迷思修正',
+        value: repairRateText,
+        detail: misconceptionTotal > 0 ? `${misconceptionRepaired}/${misconceptionTotal} 完成` : `修復 ${reviewed} 題`,
       },
     ],
     action:
       answered === 0
         ? '完成第一局後，週報卡會整理孩子的下一步練習方向。'
-        : `下次建議練 ${practiceCount} 題，優先順序：${focusLabel}。`,
+        : openMisconceptions > 0
+          ? `下次建議練 ${practiceCount} 題，優先修正：${focusLabel}。`
+          : `本週迷思已修正，下一次練 ${practiceCount} 題維持手感。`,
   };
 });
 const missionEntries = computed(() => {
@@ -1062,7 +1079,12 @@ function chooseAnswer(index: number): void {
   const answeredQuestion = state.currentQuestion;
   const result = answerQuestion(state, index);
   recordConfidenceAnswer(confidence, result.correct);
-  if (!result.correct && confidence === 'sure') {
+  if (result.correct) {
+    const repaired = recordHighConfidenceRepair(answeredQuestion);
+    if (repaired) {
+      priorityReviewNotice.value = '迷思修正完成，週報卡已更新修正率。';
+    }
+  } else if (confidence === 'sure') {
     prioritizeReviewQuestion(state, answeredQuestion, 0);
     recordHighConfidenceMistake(answeredQuestion, result.correctAnswer);
     priorityReviewNotice.value = '高把握錯題已列為立即複習，下一題先修正這個觀念。';
@@ -1159,14 +1181,24 @@ function recordHighConfidenceMistake(question: QuizQuestion, correctAnswer: stri
       prompt: question.prompt,
       correctAnswer,
       count: 1,
+      repaired: false,
     },
     ...highConfidenceMistakes.value,
   ].slice(0, 5);
 }
 
+function recordHighConfidenceRepair(question: QuizQuestion): boolean {
+  const target = highConfidenceMistakes.value.find((entry) => entry.id === question.id);
+  if (!target || target.repaired) return false;
+  highConfidenceMistakes.value = highConfidenceMistakes.value.map((entry) =>
+    entry.id === question.id ? { ...entry, repaired: true } : entry,
+  );
+  return true;
+}
+
 function formatMisconceptionEntry(entry: MisconceptionEntry): string {
   const prompt = entry.prompt.length > 22 ? `${entry.prompt.slice(0, 22)}...` : entry.prompt;
-  return `${entry.subjectLabel}/${entry.abilityLabel}：${prompt} 正解 ${entry.correctAnswer}`;
+  return `${entry.subjectLabel}/${entry.abilityLabel}：${prompt} 正解 ${entry.correctAnswer}${entry.repaired ? ' 已修正' : ''}`;
 }
 
 function resetConfidenceStats(): void {
@@ -1244,6 +1276,8 @@ function saveCompletedRunIfNeeded(): void {
     abilityPractice: resultAbilityPractice.value,
     confidenceSummary: confidenceCalibrationText.value,
     misconceptionFocuses: highConfidenceMistakes.value.slice(0, 3).map(formatMisconceptionEntry),
+    misconceptionTotal: highConfidenceMistakes.value.length,
+    misconceptionRepaired: highConfidenceMistakes.value.filter((entry) => entry.repaired).length,
     badges: unlockedRunBadges.value.map((badge) => badge.label),
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
