@@ -1,9 +1,9 @@
 <template>
   <main class="knowledge-defense-shell">
-    <section v-if="state.status === 'ready'" class="setup-screen">
+    <section v-if="state.status === 'ready'" class="setup-screen kg-reactbits-surface">
       <div class="setup-copy">
         <p class="kicker">小一到小六問答塔防</p>
-        <h1>知識守護隊</h1>
+        <h1 class="kg-shiny-title">知識守護隊</h1>
         <p class="setup-text">
           答題取得能量，建造原創知識塔，守住右側的知識核心。現在題庫涵蓋小一到小六、上下學期、期中期末與五科。
         </p>
@@ -13,7 +13,7 @@
         <button
           v-for="grade in gradeConfigs"
           :key="grade.id"
-          class="grade-card"
+          class="grade-card kg-glare-card"
           :class="{ active: state.grade === grade.id }"
           type="button"
           @click="selectGrade(grade.id)"
@@ -103,7 +103,7 @@
         <small>{{ weeklyCoachCard.action }}</small>
       </div>
 
-      <button class="primary-action" type="button" @click="startRun">開始守護</button>
+      <button class="primary-action kg-star-action" type="button" @click="startRun">開始守護</button>
       <div class="setup-quick-rail" aria-label="手機快速開始">
         <span>
           <strong>{{ setupQuickTitle }}</strong>
@@ -115,7 +115,7 @@
 
     <section class="game-layout" :class="{ 'with-setup': state.status === 'ready' }">
       <div ref="battleCardRef" class="battle-card">
-        <header class="top-hud">
+        <header class="top-hud kg-hud-scan">
           <div>
             <span class="eyebrow">{{ state.config.label }} / {{ state.config.title }}</span>
             <strong>{{ statusLabel }}</strong>
@@ -182,7 +182,7 @@
           </div>
 
           <div v-if="state.status === 'won' || state.status === 'lost'" class="result-layer">
-            <div class="result-panel">
+            <div class="result-panel kg-result-panel">
               <span>{{ state.status === 'won' ? '守護成功' : '核心失守' }}</span>
               <strong>{{ state.status === 'won' ? '知識核心穩定了' : '重新調整塔位再挑戰' }}</strong>
               <div class="result-summary" aria-label="戰後學習摘要">
@@ -196,7 +196,7 @@
                 </span>
                 <small v-if="unlockedRunBadges.length === 0">本局尚未解鎖徽章，下一局先拿暖身守護。</small>
               </div>
-              <button class="primary-action compact" type="button" @click="resetGame(state.grade)">再玩一次</button>
+              <button class="primary-action compact kg-star-action" type="button" @click="resetGame(state.grade)">再玩一次</button>
             </div>
           </div>
         </div>
@@ -230,26 +230,6 @@
             <em>{{ currentAbilityRunText }}</em>
             <small>{{ currentAbility.recoveryTip }}</small>
           </div>
-          <div class="confidence-check" aria-label="答題前信心選擇">
-            <div class="confidence-heading">
-              <span>答題前信心</span>
-              <strong>{{ confidenceCalibrationText }}</strong>
-            </div>
-            <div class="confidence-options">
-              <button
-                v-for="option in confidenceOptions"
-                :key="option.id"
-                type="button"
-                :class="{ active: selectedConfidence === option.id }"
-                :aria-pressed="selectedConfidence === option.id"
-                @click="selectedConfidence = option.id"
-              >
-                <strong>{{ option.label }}</strong>
-                <small>{{ option.detail }}</small>
-              </button>
-            </div>
-            <small>{{ confidenceGuideText }}</small>
-          </div>
           <p class="question-text">{{ state.currentQuestion.prompt }}</p>
           <div class="hint-strip" :class="{ open: currentHintVisible }">
             <button type="button" :disabled="currentHintVisible || state.energy < 5" @click="revealHint">提示 -5 能量</button>
@@ -260,9 +240,9 @@
             <button
               v-for="(option, index) in state.currentQuestion.options"
               :key="option"
-              class="answer-button"
+              class="answer-button kg-glare-card"
               type="button"
-              :disabled="state.status === 'won' || state.status === 'lost' || !selectedConfidence"
+              :disabled="state.status === 'won' || state.status === 'lost'"
               @click="chooseAnswer(index)"
             >
               <span>{{ optionLabels[index] }}</span>
@@ -429,7 +409,7 @@
           </div>
           <div class="commercial-note">
             <strong>家長摘要</strong>
-            <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ confidenceCalibrationText }}。{{ parentWeeklyReport.nextStep }}</span>
+            <span>{{ parentWeeklyReport.summary }} 本局使用 {{ state.hintsUsed }} 次提示。{{ parentWeeklyReport.nextStep }}</span>
           </div>
           <div class="misconception-note" :class="{ empty: misconceptionFocusList.length === 0 }">
             <strong>迷思清單</strong>
@@ -493,7 +473,6 @@ import {
   buildTower,
   createKnowledgeGameState,
   getTowerAtSlot,
-  prioritizeReviewQuestion,
   startGame,
   tickGame,
   triggerRepairSurge,
@@ -518,7 +497,6 @@ interface RunSummary {
   abilityFocusId?: AbilityId;
   abilityFocus?: string;
   abilityPractice?: number;
-  confidenceSummary?: string;
   misconceptionFocuses?: string[];
   misconceptionTotal?: number;
   misconceptionRepaired?: number;
@@ -562,18 +540,6 @@ interface WeeklyCoachCard {
 }
 
 type GraphicsMode = 'auto' | 'performance' | 'quality';
-type ConfidenceLevel = 'sure' | 'maybe' | 'try';
-
-interface ConfidenceOption {
-  id: ConfidenceLevel;
-  label: string;
-  detail: string;
-}
-
-interface ConfidenceBucket {
-  total: number;
-  correct: number;
-}
 
 const abilityCategories = (Object.keys(ABILITIES) as AbilityId[]).map((id) => ({ id, ...ABILITIES[id] }));
 
@@ -586,26 +552,15 @@ const targetModeOptions = TARGET_MODE_OPTIONS;
 const termOptions = TERM_OPTIONS;
 const examOptions = EXAM_OPTIONS;
 const subjectFilterOptions = SUBJECT_FILTER_OPTIONS;
-const confidenceOptions: ConfidenceOption[] = [
-  { id: 'sure', label: '很有把握', detail: '先穩穩拿分' },
-  { id: 'maybe', label: '有點不確定', detail: '看完再判斷' },
-  { id: 'try', label: '先試試', detail: '用策略拆題' },
-];
 const quizFilter = reactive<QuizFilter>({ ...DEFAULT_QUIZ_FILTER });
 const state = reactive(createKnowledgeGameState(1, quizFilter));
 const selectedTowerType = ref<TowerTypeId>('number');
 const selectedTargetMode = ref<TowerTargetMode>('front');
 const soundEnabled = ref(true);
 const graphicsMode = ref<GraphicsMode>(loadGraphicsMode());
-const selectedConfidence = ref<ConfidenceLevel | null>(null);
 const priorityReviewNotice = ref('');
-const highConfidenceMistakes = ref<MisconceptionEntry[]>([]);
+const misconceptionEntries = ref<MisconceptionEntry[]>([]);
 const repairStreak = ref(0);
-const confidenceStats = reactive<Record<ConfidenceLevel, ConfidenceBucket>>({
-  sure: { total: 0, correct: 0 },
-  maybe: { total: 0, correct: 0 },
-  try: { total: 0, correct: 0 },
-});
 const battle3dHost = ref<HTMLElement | null>(null);
 const battleCardRef = ref<HTMLElement | null>(null);
 const quizCardRef = ref<HTMLElement | null>(null);
@@ -666,24 +621,6 @@ const nextWavePreview = computed(() => {
 });
 const currentHintVisible = computed(() => state.hintQuestionIds.includes(state.currentQuestion.id));
 const currentQuestionHint = computed(() => state.currentQuestion.hint ?? state.currentQuestion.explanation);
-const confidenceAnsweredTotal = computed(() =>
-  Object.values(confidenceStats).reduce((sum, bucket) => sum + bucket.total, 0),
-);
-const confidenceCorrectTotal = computed(() =>
-  Object.values(confidenceStats).reduce((sum, bucket) => sum + bucket.correct, 0),
-);
-const confidenceCalibrationText = computed(() => {
-  if (confidenceAnsweredTotal.value === 0) return '尚未校準';
-  const sure = confidenceStats.sure;
-  const sureText = sure.total === 0 ? '高把握 -' : `高把握 ${Math.round((sure.correct / sure.total) * 100)}%`;
-  return `校準 ${confidenceCorrectTotal.value}/${confidenceAnsweredTotal.value}，${sureText}`;
-});
-const confidenceGuideText = computed(() => {
-  if (!selectedConfidence.value) return '先選信心，答案才會解鎖。';
-  if (selectedConfidence.value === 'sure') return '保持節奏，答完看看高把握是否真的穩。';
-  if (selectedConfidence.value === 'maybe') return '先圈關鍵詞，再比對每個選項。';
-  return '先用提示策略拆題，答錯也會進入複習。';
-});
 const totalAnswered = computed(() => subjectEntries.value.reduce((sum, subject) => sum + subject.total, 0));
 const totalCorrect = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].correct, 0));
 const totalReviewed = computed(() => (Object.keys(SUBJECTS) as SubjectId[]).reduce((sum, id) => sum + state.stats[id].reviewed, 0));
@@ -810,7 +747,7 @@ const retryMissionFocusText = computed(() => {
   if (retryMissionDeckFocusCount.value === 0) return '目前條件沒有相符能力題，任務會保留到合適題庫。';
   return `前段優先 ${retryMissionDeckFocusCount.value} 題。`;
 });
-const repairStreakGoal = computed(() => Math.min(3, Math.max(2, highConfidenceMistakes.value.length || 2)));
+const repairStreakGoal = computed(() => Math.min(3, Math.max(2, misconceptionEntries.value.length || 2)));
 const runBadges = computed<RunBadge[]>(() => [
   {
     id: 'warmup',
@@ -867,7 +804,7 @@ const weeklyRuns = computed(() => {
 });
 const misconceptionFocusList = computed(() => {
   const counts = new Map<string, number>();
-  for (const entry of highConfidenceMistakes.value) {
+  for (const entry of misconceptionEntries.value) {
     const label = formatMisconceptionEntry(entry);
     counts.set(label, (counts.get(label) ?? 0) + entry.count);
   }
@@ -882,7 +819,7 @@ const misconceptionFocusList = computed(() => {
     .map(([label]) => label);
 });
 const misconceptionFocusText = computed(() => {
-  if (misconceptionFocusList.value.length === 0) return '尚未累積高把握錯題；出現後會整理最需要修正的觀念。';
+  if (misconceptionFocusList.value.length === 0) return '尚未累積錯題觀念；出現後會整理最需要修正的觀念。';
   return misconceptionFocusList.value.join(' / ');
 });
 const parentWeeklyReport = computed<ParentWeeklyReport>(() => {
@@ -926,8 +863,8 @@ const weeklyCoachCard = computed<WeeklyCoachCard>(() => {
   const liveAnswered = totalAnswered.value;
   const liveCorrect = totalCorrect.value;
   const liveReviewed = totalReviewed.value;
-  const liveMisconceptionTotal = highConfidenceMistakes.value.length;
-  const liveMisconceptionRepaired = highConfidenceMistakes.value.filter((entry) => entry.repaired).length;
+  const liveMisconceptionTotal = misconceptionEntries.value.length;
+  const liveMisconceptionRepaired = misconceptionEntries.value.filter((entry) => entry.repaired).length;
   const answered = weeklyAnswered + liveAnswered;
   const correct = weeklyCorrect + liveCorrect;
   const reviewed = weeklyReviewed + liveReviewed;
@@ -936,7 +873,7 @@ const weeklyCoachCard = computed<WeeklyCoachCard>(() => {
   const openMisconceptions = Math.max(0, misconceptionTotal - misconceptionRepaired);
   const accuracyText = answered === 0 ? '-' : `${Math.round((correct / answered) * 100)}%`;
   const repairRateText = misconceptionTotal === 0 ? '-' : `${Math.round((misconceptionRepaired / misconceptionTotal) * 100)}%`;
-  const openMisconception = highConfidenceMistakes.value.find((entry) => !entry.repaired);
+  const openMisconception = misconceptionEntries.value.find((entry) => !entry.repaired);
   const focusLabel = openMisconception
     ? formatMisconceptionEntry(openMisconception)
     : misconceptionFocusList.value[0] ?? retryMission.value?.label ?? resultAbilityEntry.value?.label ?? '五科輪替';
@@ -1000,10 +937,9 @@ const latestRunSummary = computed(() => {
   const result = latest.status === 'won' ? '成功' : '再挑戰';
   const accuracyText = latest.answered === 0 ? '-' : `${Math.round((latest.correct / latest.answered) * 100)}%`;
   const abilityText = latest.abilityFocus ? ` / 補 ${latest.abilityFocus}` : '';
-  const confidenceText = latest.confidenceSummary ? ` / ${latest.confidenceSummary}` : '';
   const misconceptionText = latest.misconceptionFocuses?.length ? ` / 迷思 ${latest.misconceptionFocuses.length}` : '';
   const badgeText = latest.badges?.length ? ` / 徽章 ${latest.badges.length}` : '';
-  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${confidenceText}${misconceptionText}${badgeText}`;
+  return `${result} / 小${latest.grade} / ${latest.score} 分 / 正確率 ${accuracyText} / 修復 ${latest.reviewed} 題${abilityText}${misconceptionText}${badgeText}`;
 });
 
 const currentSubject = computed(() => SUBJECTS[state.currentQuestion.subject]);
@@ -1128,30 +1064,25 @@ function scrollToMobilePanel(panel: 'battle' | 'quiz' | 'tower' | 'progress'): v
 
 function chooseAnswer(index: number): void {
   void audio?.ensureStarted();
-  if (!selectedConfidence.value) return;
   priorityReviewNotice.value = '';
   if (state.status === 'ready') {
     startGame(state);
   }
   if (state.status !== 'running') return;
-  const confidence = selectedConfidence.value;
   const answeredQuestion = state.currentQuestion;
   const result = answerQuestion(state, index);
-  recordConfidenceAnswer(confidence, result.correct);
   if (result.correct) {
-    const repaired = recordHighConfidenceRepair(answeredQuestion);
+    const repaired = recordMisconceptionRepair(answeredQuestion);
     if (repaired) {
       repairStreak.value += 1;
       triggerRepairSurge(state, repairStreak.value);
       audio?.playFocusPulse();
       priorityReviewNotice.value = `迷思修正完成，修正光波已釋放。修正連擊 ${repairStreak.value}/${repairStreakGoal.value}。`;
     }
-  } else if (confidence === 'sure') {
-    prioritizeReviewQuestion(state, answeredQuestion, 0);
-    recordHighConfidenceMistake(answeredQuestion, result.correctAnswer);
-    priorityReviewNotice.value = '高把握錯題已列為立即複習，下一題先修正這個觀念。';
+  } else {
+    recordMisconceptionMistake(answeredQuestion, result.correctAnswer);
+    priorityReviewNotice.value = '錯題已排入複習，系統會再安排這個觀念。';
   }
-  selectedConfidence.value = null;
   audio?.playAnswer(result.correct);
 }
 
@@ -1198,11 +1129,9 @@ function resetGame(grade: GradeId): void {
   applyRetryMissionQuestionFocus();
   selectedTowerType.value = 'number';
   selectedTargetMode.value = 'front';
-  selectedConfidence.value = null;
   priorityReviewNotice.value = '';
-  highConfidenceMistakes.value = [];
+  misconceptionEntries.value = [];
   repairStreak.value = 0;
-  resetConfidenceStats();
   heardEffectIds.clear();
   heardWave = 0;
   savedResultStatus = '';
@@ -1224,19 +1153,14 @@ function applyRetryMissionQuestionFocus(): void {
   state.currentQuestion = state.questionDeck[0];
 }
 
-function recordConfidenceAnswer(level: ConfidenceLevel, correct: boolean): void {
-  confidenceStats[level].total += 1;
-  if (correct) confidenceStats[level].correct += 1;
-}
-
-function recordHighConfidenceMistake(question: QuizQuestion, correctAnswer: string): void {
-  const existing = highConfidenceMistakes.value.find((entry) => entry.id === question.id);
+function recordMisconceptionMistake(question: QuizQuestion, correctAnswer: string): void {
+  const existing = misconceptionEntries.value.find((entry) => entry.id === question.id);
   if (existing) {
     existing.count += 1;
     return;
   }
   const ability = ABILITIES[getQuestionAbility(question)];
-  highConfidenceMistakes.value = [
+  misconceptionEntries.value = [
     {
       id: question.id,
       subjectLabel: SUBJECTS[question.subject].label,
@@ -1246,14 +1170,14 @@ function recordHighConfidenceMistake(question: QuizQuestion, correctAnswer: stri
       count: 1,
       repaired: false,
     },
-    ...highConfidenceMistakes.value,
+    ...misconceptionEntries.value,
   ].slice(0, 5);
 }
 
-function recordHighConfidenceRepair(question: QuizQuestion): boolean {
-  const target = highConfidenceMistakes.value.find((entry) => entry.id === question.id);
+function recordMisconceptionRepair(question: QuizQuestion): boolean {
+  const target = misconceptionEntries.value.find((entry) => entry.id === question.id);
   if (!target || target.repaired) return false;
-  highConfidenceMistakes.value = highConfidenceMistakes.value.map((entry) =>
+  misconceptionEntries.value = misconceptionEntries.value.map((entry) =>
     entry.id === question.id ? { ...entry, repaired: true } : entry,
   );
   return true;
@@ -1262,13 +1186,6 @@ function recordHighConfidenceRepair(question: QuizQuestion): boolean {
 function formatMisconceptionEntry(entry: MisconceptionEntry): string {
   const prompt = entry.prompt.length > 22 ? `${entry.prompt.slice(0, 22)}...` : entry.prompt;
   return `${entry.subjectLabel}/${entry.abilityLabel}：${prompt} 正解 ${entry.correctAnswer}${entry.repaired ? ' 已修正' : ''}`;
-}
-
-function resetConfidenceStats(): void {
-  for (const bucket of Object.values(confidenceStats)) {
-    bucket.total = 0;
-    bucket.correct = 0;
-  }
 }
 
 function rebuildThreeScene(): void {
@@ -1337,10 +1254,9 @@ function saveCompletedRunIfNeeded(): void {
     abilityFocusId: resultAbilityEntry.value?.id,
     abilityFocus: resultAbilityEntry.value?.label,
     abilityPractice: resultAbilityPractice.value,
-    confidenceSummary: confidenceCalibrationText.value,
-    misconceptionFocuses: highConfidenceMistakes.value.slice(0, 3).map(formatMisconceptionEntry),
-    misconceptionTotal: highConfidenceMistakes.value.length,
-    misconceptionRepaired: highConfidenceMistakes.value.filter((entry) => entry.repaired).length,
+    misconceptionFocuses: misconceptionEntries.value.slice(0, 3).map(formatMisconceptionEntry),
+    misconceptionTotal: misconceptionEntries.value.length,
+    misconceptionRepaired: misconceptionEntries.value.filter((entry) => entry.repaired).length,
     badges: unlockedRunBadges.value.map((badge) => badge.label),
   };
   runHistory.value = [summary, ...runHistory.value].slice(0, 8);
@@ -1409,6 +1325,96 @@ function shouldUsePerformanceMode(): boolean {
   padding-right: max(var(--shell-pad), env(safe-area-inset-right));
   padding-bottom: calc(var(--shell-pad) + env(safe-area-inset-bottom));
   padding-left: max(var(--shell-pad), env(safe-area-inset-left));
+}
+
+.kg-reactbits-surface,
+.kg-hud-scan,
+.kg-glare-card,
+.kg-star-action,
+.kg-result-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.kg-reactbits-surface::before,
+.kg-hud-scan::before {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, transparent 18%, rgba(255, 255, 255, 0.09) 30%, transparent 44%),
+    radial-gradient(circle at 16% 10%, rgba(250, 204, 21, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 0%, rgba(45, 212, 191, 0.16), transparent 30%);
+  background-size: 260% 100%, auto, auto;
+  content: '';
+  pointer-events: none;
+  animation: kg-surface-scan 7s ease-in-out infinite;
+}
+
+.kg-reactbits-surface::before {
+  z-index: -1;
+}
+
+.kg-hud-scan::before {
+  border-radius: inherit;
+}
+
+.kg-shiny-title {
+  display: inline-block;
+  background: linear-gradient(110deg, #f8fafc 0%, #f8fafc 34%, #fde68a 48%, #5eead4 58%, #f8fafc 72%, #f8fafc 100%);
+  background-size: 240% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: kg-title-sweep 4.8s ease-in-out infinite;
+}
+
+.kg-glare-card::before,
+.kg-star-action::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(120deg, transparent 56%, rgba(255, 255, 255, 0.26) 68%, transparent 82%);
+  background-position: -140% -140%;
+  background-repeat: no-repeat;
+  background-size: 220% 220%;
+  content: '';
+  pointer-events: none;
+  transition: background-position 560ms ease;
+}
+
+.kg-glare-card:hover::before,
+.kg-glare-card:focus-visible::before,
+.kg-star-action:hover::before,
+.kg-star-action:focus-visible::before {
+  background-position: 100% 100%;
+}
+
+.kg-glare-card > *,
+.kg-star-action > * {
+  position: relative;
+  z-index: 2;
+}
+
+.kg-star-action {
+  isolation: isolate;
+  box-shadow:
+    0 16px 30px rgba(249, 115, 22, 0.3),
+    inset 0 -4px 0 rgba(124, 45, 18, 0.24);
+}
+
+.kg-star-action::after {
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent, rgba(254, 240, 138, 0.72), transparent, rgba(45, 212, 191, 0.56), transparent);
+  content: '';
+  opacity: 0.62;
+  animation: kg-star-spin 5.8s linear infinite;
+}
+
+.kg-result-panel {
+  animation: kg-result-rise 420ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
 }
 
 .setup-screen {
@@ -2273,95 +2279,6 @@ function shouldUsePerformanceMode(): boolean {
   line-height: 1.35;
 }
 
-.confidence-check {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #334155;
-}
-
-.confidence-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.confidence-heading span,
-.confidence-heading strong,
-.confidence-check > small {
-  font-size: 0.76rem;
-  font-weight: 900;
-}
-
-.confidence-heading span {
-  color: #475569;
-  white-space: nowrap;
-}
-
-.confidence-heading strong {
-  min-width: 0;
-  color: #0f766e;
-  text-align: right;
-}
-
-.confidence-check > small {
-  color: #64748b;
-  line-height: 1.35;
-}
-
-.confidence-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.confidence-options button {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  min-height: 50px;
-  padding: 7px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #475569;
-  cursor: pointer;
-}
-
-.confidence-options button:hover {
-  border-color: #14b8a6;
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.12);
-}
-
-.confidence-options button.active {
-  border-color: #0f766e;
-  background: #ecfdf5;
-  color: #0f766e;
-}
-
-.confidence-options strong,
-.confidence-options small {
-  overflow-wrap: anywhere;
-  font-weight: 900;
-  line-height: 1.2;
-}
-
-.confidence-options strong {
-  font-size: 0.75rem;
-}
-
-.confidence-options small {
-  color: inherit;
-  font-size: 0.66rem;
-  opacity: 0.82;
-}
-
 .question-text {
   margin: 0;
   min-height: 76px;
@@ -3062,6 +2979,41 @@ function shouldUsePerformanceMode(): boolean {
   color: #0f766e;
 }
 
+@keyframes kg-surface-scan {
+  0%, 30% { background-position: 180% 0, center, center; }
+  72%, 100% { background-position: -70% 0, center, center; }
+}
+
+@keyframes kg-title-sweep {
+  0%, 20% { background-position: 160% center; }
+  58%, 100% { background-position: -60% center; }
+}
+
+@keyframes kg-star-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes kg-result-rise {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kg-reactbits-surface::before,
+  .kg-hud-scan::before,
+  .kg-shiny-title,
+  .kg-star-action::after,
+  .kg-result-panel {
+    animation: none;
+  }
+
+  .kg-glare-card::before,
+  .kg-star-action::before {
+    display: none;
+  }
+}
+
 @media (max-width: 1100px) {
   .game-layout {
     height: auto;
@@ -3189,21 +3141,6 @@ function shouldUsePerformanceMode(): boolean {
 
   .ability-preview small {
     display: none;
-  }
-
-  .confidence-check {
-    gap: 6px;
-    padding: 8px;
-  }
-
-  .confidence-check > small,
-  .confidence-options small {
-    display: none;
-  }
-
-  .confidence-options button {
-    min-height: 42px;
-    padding: 6px;
   }
 
   .question-text {
