@@ -203,6 +203,10 @@
       </div>
 
       <nav v-if="state.status !== 'ready'" class="mobile-action-rail" aria-label="手機快捷導覽">
+        <button type="button" @click="scrollToMobilePanel('quiz')">
+          <span>答題</span>
+          <strong>{{ totalCorrect }}/{{ runCorrectGoal }}</strong>
+        </button>
         <button type="button" @click="scrollToMobilePanel('battle')">
           <span>戰場</span>
           <strong>{{ state.wave }}/{{ state.targetWaves }}</strong>
@@ -1842,7 +1846,7 @@ function shouldUsePerformanceMode(): boolean {
 }
 
 .game-layout.with-setup {
-  filter: saturate(0.75) brightness(0.82);
+  display: none;
 }
 
 .control-panel > section {
@@ -3079,7 +3083,7 @@ function shouldUsePerformanceMode(): boolean {
     flex-direction: column;
     min-height: auto;
     gap: 12px;
-    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
   .battle-card {
@@ -3216,15 +3220,15 @@ function shouldUsePerformanceMode(): boolean {
 
   .mobile-action-rail {
     order: 2;
-    position: sticky;
-    top: max(8px, env(safe-area-inset-top));
-    right: auto;
-    bottom: auto;
-    left: auto;
-    z-index: 12;
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 20;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    box-sizing: border-box;
     padding: 8px;
     border: 1px solid rgba(255, 255, 255, 0.32);
     border-radius: 14px;
@@ -3237,7 +3241,7 @@ function shouldUsePerformanceMode(): boolean {
     display: grid;
     gap: 2px;
     min-width: 0;
-    min-height: 54px;
+    min-height: 52px;
     padding: 7px 6px;
     border: 1px solid rgba(219, 234, 254, 0.22);
     border-radius: 10px;
@@ -3265,7 +3269,7 @@ function shouldUsePerformanceMode(): boolean {
   }
 
   .mobile-action-rail strong {
-    font-size: 0.95rem;
+    font-size: 0.86rem;
     font-weight: 950;
   }
 
@@ -3340,7 +3344,7 @@ function shouldUsePerformanceMode(): boolean {
 
 @media (max-width: 760px) and (max-height: 740px) {
   .game-layout {
-    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
   }
 
   .battle-canvas {
